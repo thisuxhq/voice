@@ -1,0 +1,21 @@
+{
+  "name": "@thisux/voice-example-basic",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@thisux/voice-core": "workspace:*",
+    "@thisux/voice-transport-webrtc": "workspace:*",
+    "@thisux/voice-provider-openai": "workspace:*",
+    "@thisux/voice-provider-groq": "workspace:*",
+    "@thisux/voice-provider-cartesia": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2",
+    "@types/bun": "^1.2.5"
+  }
+}

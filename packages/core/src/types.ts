@@ -1,0 +1,125 @@
+import type { Session, SessionManager } from "@thisux/voice-session";
+import type {
+  EventMap,
+  TypedEmitter,
+  VoiceEventName,
+  EventHandler,
+} from "@thisux/voice-events";
+
+/** Chat message for LLM providers */
+export interface Message {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  name?: string;
+  toolCallId?: string;
+  toolCalls?: ToolCall[];
+}
+
+export interface ToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+export interface LLMChunk {
+  type: "text" | "tool_call" | "done";
+  text?: string;
+  toolCall?: ToolCall;
+}
+
+export interface LLMOptions {
+  tools?: ToolDefinition[];
+  signal?: AbortSignal;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface ToolDefinition {
+  name: string;
+  description?: string;
+  parameters?: Record<string, unknown>;
+  execute: (
+    input: Record<string, unknown>,
+    ctx: ToolContext,
+  ) => unknown | Promise<unknown>;
+}
+
+export interface ToolContext {
+  sessionId: string;
+  signal: AbortSignal;
+}
+
+export interface STTProvider {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  /** Push encoded audio; provider streams transcripts via callbacks */
+  transcribe(audio: Uint8Array): void;
+  onTranscript?(
+    handler: (event: { text: string; isFinal: boolean }) => void,
+  ): void | (() => void);
+}
+
+export interface LLMProvider {
+  generate(
+    messages: Message[],
+    options?: LLMOptions,
+  ): AsyncIterable<LLMChunk>;
+}
+
+export interface TTSProvider {
+  speak(text: string, options?: { signal?: AbortSignal }): AsyncIterable<Uint8Array>;
+  abort?(): void;
+}
+
+export interface TransportProvider {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  send(data: Uint8Array): void;
+  onAudio?(handler: (chunk: Uint8Array) => void): void | (() => void);
+}
+
+export interface CreateVoiceOptions {
+  transport: TransportProvider;
+  stt: STTProvider;
+  llm: LLMProvider;
+  tts: TTSProvider;
+  systemPrompt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type Middleware = (
+  voice: VoiceAgent,
+  next: () => Promise<void>,
+) => Promise<void>;
+
+export interface VoiceAgent {
+  readonly session: Session;
+  readonly events: TypedEmitter<EventMap>;
+
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  interrupt(): Promise<void>;
+
+  on<K extends VoiceEventName>(
+    event: K,
+    handler: EventHandler<EventMap[K]>,
+  ): () => void;
+
+  tool(definition: ToolDefinition): void;
+  use(middleware: Middleware): void;
+
+  /** Push a text user turn (useful for tests / non-audio clients) */
+  say(text: string): Promise<void>;
+}
+
+export interface InternalVoiceContext {
+  sessionManager: SessionManager;
+  transport: TransportProvider;
+  stt: STTProvider;
+  llm: LLMProvider;
+  tts: TTSProvider;
+  tools: Map<string, ToolDefinition>;
+  messages: Message[];
+  systemPrompt: string;
+  abortController: AbortController | null;
+}

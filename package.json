@@ -1,0 +1,23 @@
+{
+  "name": "thisux-voice",
+  "private": true,
+  "version": "0.0.1",
+  "description": "Build real-time voice agents in TypeScript.",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "bun run --filter '@thisux/*' build",
+    "typecheck": "bun run --filter '@thisux/*' typecheck",
+    "clean": "rm -rf packages/*/dist examples/*/dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2",
+    "@types/bun": "^1.2.5"
+  },
+  "packageManager": "bun@1.2.5",
+  "engines": {
+    "node": ">=20"
+  }
+}
