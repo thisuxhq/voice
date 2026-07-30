@@ -26,3 +26,19 @@ export type {
 } from "@thisux/voice-events";
 
 export type { Session, SessionState } from "@thisux/voice-session";
+
+export {
+  createFakeTransport,
+  createFakeSTT,
+  createFakeLLM,
+  createFakeTTS,
+  createEchoLLM,
+} from "./testing/index.js";
+export type {
+  FakeTransport,
+  FakeSTT,
+  FakeLLM,
+  FakeTTS,
+  FakeTTSOptions,
+  LlmScriptStep,
+} from "./testing/index.js";

@@ -12,7 +12,8 @@
     "@thisux/voice-transport-webrtc": "workspace:*",
     "@thisux/voice-provider-openai": "workspace:*",
     "@thisux/voice-provider-groq": "workspace:*",
-    "@thisux/voice-provider-cartesia": "workspace:*"
+    "@thisux/voice-provider-cartesia": "workspace:*",
+    "@thisux/voice-observability": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.2",

@@ -32,26 +32,37 @@ export async function runTurn(
   let assistantText = "";
   const pendingToolCalls: ToolCall[] = [];
 
-  for await (const chunk of ctx.llm.generate(ctx.messages, {
-    tools: [...ctx.tools.values()],
-    signal,
-  })) {
-    if (signal?.aborted) break;
-    await handleChunk(chunk, {
-      onText: (text) => {
-        assistantText += text;
-      },
-      onToolCall: (tc) => {
-        pendingToolCalls.push(tc);
-      },
-    });
+  try {
+    for await (const chunk of ctx.llm.generate(ctx.messages, {
+      tools: [...ctx.tools.values()],
+      signal,
+    })) {
+      if (signal?.aborted) break;
+      await handleChunk(chunk, {
+        onText: (text) => {
+          assistantText += text;
+        },
+        onToolCall: (tc) => {
+          pendingToolCalls.push(tc);
+        },
+      });
+    }
+  } catch (err) {
+    if (signal?.aborted || isAbortError(err)) {
+      recoverFromAbort(ctx);
+      return;
+    }
+    throw err;
   }
 
   events.emit("llm.completed", {
     ...createBaseEvent(sessionId),
   });
 
-  if (signal?.aborted) return;
+  if (signal?.aborted) {
+    recoverFromAbort(ctx);
+    return;
+  }
 
   // Tool loop (single round for Phase 1)
   if (pendingToolCalls.length > 0) {
@@ -63,31 +74,54 @@ export async function runTurn(
     ctx.messages.push(assistantMsg);
 
     for (const tc of pendingToolCalls) {
-      if (signal?.aborted) return;
+      if (signal?.aborted) {
+        recoverFromAbort(ctx);
+        return;
+      }
       await executeTool(ctx, events, tc, signal);
+      if (signal?.aborted) {
+        recoverFromAbort(ctx);
+        return;
+      }
     }
 
     // Second LLM pass after tools
     events.emit("llm.started", { ...createBaseEvent(sessionId) });
     assistantText = "";
-    for await (const chunk of ctx.llm.generate(ctx.messages, {
-      tools: [...ctx.tools.values()],
-      signal,
-    })) {
-      if (signal?.aborted) break;
-      await handleChunk(chunk, {
-        onText: (text) => {
-          assistantText += text;
-        },
-        onToolCall: () => {
-          // Phase 1: ignore nested tool calls after first round
-        },
-      });
+    try {
+      for await (const chunk of ctx.llm.generate(ctx.messages, {
+        tools: [...ctx.tools.values()],
+        signal,
+      })) {
+        if (signal?.aborted) break;
+        await handleChunk(chunk, {
+          onText: (text) => {
+            assistantText += text;
+          },
+          onToolCall: () => {
+            // Phase 1: ignore nested tool calls after first round
+          },
+        });
+      }
+    } catch (err) {
+      if (signal?.aborted || isAbortError(err)) {
+        recoverFromAbort(ctx);
+        return;
+      }
+      throw err;
     }
     events.emit("llm.completed", { ...createBaseEvent(sessionId) });
   }
 
-  if (signal?.aborted || !assistantText.trim()) return;
+  if (signal?.aborted) {
+    recoverFromAbort(ctx);
+    return;
+  }
+
+  if (!assistantText.trim()) {
+    ctx.sessionManager.tryTransition("listening");
+    return;
+  }
 
   ctx.messages.push({ role: "assistant", content: assistantText });
 
@@ -116,10 +150,26 @@ export async function runTurn(
       ...createBaseEvent(sessionId),
       role: "assistant",
     });
-    if (!signal?.aborted) {
+    if (signal?.aborted) {
+      recoverFromAbort(ctx);
+    } else {
       ctx.sessionManager.tryTransition("listening");
     }
   }
+}
+
+function recoverFromAbort(ctx: InternalVoiceContext): void {
+  ctx.sessionManager.tryTransition("interrupted");
+  ctx.sessionManager.tryTransition("listening");
+}
+
+function isAbortError(err: unknown): boolean {
+  return (
+    (err instanceof Error && err.name === "AbortError") ||
+    (typeof DOMException !== "undefined" &&
+      err instanceof DOMException &&
+      err.name === "AbortError")
+  );
 }
 
 async function handleChunk(
@@ -171,11 +221,19 @@ async function executeTool(
   if (!def) {
     error = new Error(`Unknown tool: ${tc.name}`);
     output = { error: error.message };
+  } else if (signal?.aborted) {
+    error = new Error("Tool aborted");
+    output = { error: error.message };
   } else {
     try {
       const abort = new AbortController();
       if (signal) {
-        signal.addEventListener("abort", () => abort.abort(), { once: true });
+        if (signal.aborted) abort.abort();
+        else {
+          signal.addEventListener("abort", () => abort.abort(), {
+            once: true,
+          });
+        }
       }
       output = await def.execute(input, {
         sessionId,

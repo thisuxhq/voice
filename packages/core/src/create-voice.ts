@@ -91,7 +91,8 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
                 isFinal: true,
               });
               events.emit("transcript", { ...base, text, isFinal: true });
-              void handleFinalTranscript(text);
+              // STT path already emitted transcript events
+              void handleFinalTranscript(text, { emitTranscript: false });
             } else {
               events.emit("transcript.partial", {
                 ...base,
@@ -159,9 +160,9 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
     },
 
     async interrupt() {
+      // Abort in-flight LLM / tools / TTS; keep session id stable.
       ctx.abortController?.abort();
       ctx.tts.abort?.();
-      ctx.abortController = new AbortController();
 
       sessionManager.tryTransition("interrupted");
       sessionManager.tryTransition("listening");
@@ -180,7 +181,10 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
     },
   };
 
-  async function handleFinalTranscript(text: string): Promise<void> {
+  async function handleFinalTranscript(
+    text: string,
+    opts?: { emitTranscript?: boolean },
+  ): Promise<void> {
     const trimmed = text.trim();
     if (!trimmed) return;
 
@@ -192,9 +196,20 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
       await agent.interrupt();
     }
 
+    // Fresh controller for this turn (interrupt only aborts; does not replace).
     ctx.abortController = new AbortController();
 
     try {
+      if (opts?.emitTranscript !== false) {
+        const base = createBaseEvent(sessionManager.id);
+        events.emit("transcript.final", {
+          ...base,
+          text: trimmed,
+          isFinal: true,
+        });
+        events.emit("transcript", { ...base, text: trimmed, isFinal: true });
+      }
+
       events.emit("speech.started", {
         ...createBaseEvent(sessionManager.id),
         role: "user",

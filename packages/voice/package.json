@@ -1,0 +1,37 @@
+{
+  "name": "@thisux/voice",
+  "version": "0.0.1",
+  "description": "THISUX Voice — build real-time voice agents in TypeScript (umbrella package)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@thisux/voice-core": "workspace:*",
+    "@thisux/voice-events": "workspace:*",
+    "@thisux/voice-session": "workspace:*",
+    "@thisux/voice-state-machine": "workspace:*",
+    "@thisux/voice-transport-webrtc": "workspace:*",
+    "@thisux/voice-transport-websocket": "workspace:*",
+    "@thisux/voice-transport-sip": "workspace:*",
+    "@thisux/voice-provider-openai": "workspace:*",
+    "@thisux/voice-provider-groq": "workspace:*",
+    "@thisux/voice-provider-cartesia": "workspace:*",
+    "@thisux/voice-provider-elevenlabs": "workspace:*",
+    "@thisux/voice-plugin-twilio": "workspace:*",
+    "@thisux/voice-observability": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}

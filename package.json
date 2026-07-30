@@ -8,8 +8,9 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "bun run --filter '@thisux/*' build",
-    "typecheck": "bun run --filter '@thisux/*' typecheck",
+    "build": "bun run --filter './packages/*' build",
+    "typecheck": "bun run --filter './packages/*' typecheck",
+    "test": "bun test packages/*/src",
     "clean": "rm -rf packages/*/dist examples/*/dist"
   },
   "devDependencies": {

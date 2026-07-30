@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "composite": true
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../core" },
+    { "path": "../events" },
+    { "path": "../session" },
+    { "path": "../state-machine" },
+    { "path": "../transport-webrtc" },
+    { "path": "../transport-websocket" },
+    { "path": "../transport-sip" },
+    { "path": "../provider-openai" },
+    { "path": "../provider-groq" },
+    { "path": "../provider-cartesia" },
+    { "path": "../provider-elevenlabs" },
+    { "path": "../plugin-twilio" },
+    { "path": "../observability" }
+  ]
+}

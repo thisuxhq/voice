@@ -69,11 +69,13 @@ All product and design docs live in **[docs/](./docs/README.md)**:
 
 ```text
 packages/
-  core · events · state-machine · session
-  transport-webrtc
-  provider-openai · provider-groq · provider-cartesia
+  voice                 # umbrella (@thisux/voice)
+  core · events · state-machine · session · observability
+  transport-webrtc · transport-websocket · transport-sip
+  provider-openai · provider-groq · provider-cartesia · provider-elevenlabs
+  plugin-twilio
 examples/
-  basic
+  basic · offline-launch · phase2-demo
 ```
 
 ## Develop
@@ -82,13 +84,16 @@ examples/
 # from repo root
 bun install
 bun run build
-bun run typecheck
+bun run test
+bun run examples/offline-launch/src/index.ts
+bun run examples/phase2-demo/src/index.ts
+bun run examples/basic/src/index.ts   # live keys optional; offline fallback
 ```
 
 ## Roadmap
 
-1. **Phase 1** — WebRTC, OpenAI STT, Groq, Cartesia, events, tools  
-2. **Phase 2** — ElevenLabs, Twilio, SIP, metrics, logging  
+1. **Phase 1** — ✅ WebRTC, OpenAI STT, Groq, Cartesia, events, tools  
+2. **Phase 2** — ✅ ElevenLabs, Twilio, SIP, metrics, logging  
 3. **Phase 3** — Video, avatars, multi-agent  
 
 ## License

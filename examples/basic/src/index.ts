@@ -1,33 +1,48 @@
 /**
- * Basic THISUX Voice example (Phase 1).
+ * Phase 1 live example.
  *
- * Uses text turns via `voice.say()` so you can try the pipeline without a mic.
- * Set OPENAI_API_KEY, GROQ_API_KEY, CARTESIA_API_KEY in the environment.
+ * With OPENAI_API_KEY + GROQ_API_KEY + CARTESIA_API_KEY: real providers.
+ * Without keys: falls back to offline fakes (still proves the agent loop).
  */
 import { createVoice } from "@thisux/voice-core";
 import { webrtc } from "@thisux/voice-transport-webrtc";
 import { openai } from "@thisux/voice-provider-openai";
 import { groq } from "@thisux/voice-provider-groq";
 import { cartesia } from "@thisux/voice-provider-cartesia";
+import {
+  createFakeTransport,
+  createFakeSTT,
+  createFakeTTS,
+  createEchoLLM,
+} from "@thisux/voice-core";
+import { logger, metrics } from "@thisux/voice-observability";
 
 const openaiKey = process.env.OPENAI_API_KEY;
 const groqKey = process.env.GROQ_API_KEY;
 const cartesiaKey = process.env.CARTESIA_API_KEY;
+const live = Boolean(openaiKey && groqKey && cartesiaKey);
 
-if (!openaiKey || !groqKey || !cartesiaKey) {
-  console.error(
-    "Missing env: OPENAI_API_KEY, GROQ_API_KEY, CARTESIA_API_KEY are required.",
-  );
-  process.exit(1);
-}
+const voice = live
+  ? createVoice({
+      transport: webrtc(),
+      stt: openai({ apiKey: openaiKey!, sttMode: "streaming" }),
+      llm: groq({ apiKey: groqKey! }),
+      tts: cartesia({ apiKey: cartesiaKey! }),
+      systemPrompt:
+        "You are a concise, friendly voice assistant. Keep replies short.",
+    })
+  : createVoice({
+      transport: createFakeTransport(),
+      stt: createFakeSTT(),
+      llm: createEchoLLM(
+        "Offline mode: set OPENAI_API_KEY, GROQ_API_KEY, CARTESIA_API_KEY for live providers.",
+      ),
+      tts: createFakeTTS({ chunkCount: 2 }),
+      systemPrompt: "Offline basic example",
+    });
 
-const voice = createVoice({
-  transport: webrtc(),
-  stt: openai({ apiKey: openaiKey }),
-  llm: groq({ apiKey: groqKey }),
-  tts: cartesia({ apiKey: cartesiaKey }),
-  systemPrompt: "You are a concise, friendly voice assistant. Keep replies short.",
-});
+voice.use(logger({ level: "info" }));
+voice.use(metrics({ debug: false }));
 
 voice.tool({
   name: "createTask",
@@ -47,18 +62,21 @@ voice.tool({
 });
 
 voice.on("transcript.final", ({ text }) => console.log("user:", text));
-voice.on("llm.started", () => console.log("…thinking"));
-voice.on("tool.called", ({ name, input }) =>
-  console.log("tool call:", name, input),
-);
 voice.on("tts.started", ({ text }) => console.log("assistant:", text));
 voice.on("error", ({ error }) => console.error("error:", error.message));
 
 await voice.connect();
-console.log("connected · session", voice.session.id);
+console.log(
+  live ? "LIVE providers" : "OFFLINE fakes",
+  "· session",
+  voice.session.id,
+);
 
-// Simulate a user utterance (no mic required)
-await voice.say("Create a task titled buy milk, then confirm.");
+await voice.say(
+  live
+    ? "Create a task titled buy milk, then confirm briefly."
+    : "Hello from basic example",
+);
 
 await voice.disconnect();
-console.log("done");
+console.log("BASIC_EXAMPLE_OK");

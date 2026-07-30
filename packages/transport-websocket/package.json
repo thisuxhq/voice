@@ -1,7 +1,7 @@
 {
-  "name": "@thisux/voice-core",
+  "name": "@thisux/voice-transport-websocket",
   "version": "0.0.1",
-  "description": "Core SDK for THISUX Voice — createVoice, pipeline, tools, middleware",
+  "description": "WebSocket transport for THISUX Voice",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,10 +9,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./testing": {
-      "types": "./dist/testing/index.d.ts",
-      "import": "./dist/testing/index.js"
     }
   },
   "files": ["dist"],
@@ -21,9 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@thisux/voice-events": "workspace:*",
-    "@thisux/voice-session": "workspace:*",
-    "@thisux/voice-state-machine": "workspace:*"
+    "@thisux/voice-core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.2"

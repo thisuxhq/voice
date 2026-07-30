@@ -1,0 +1,12 @@
+{
+  "name": "@thisux/voice-example-offline-launch",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@thisux/voice-core": "workspace:*"
+  }
+}

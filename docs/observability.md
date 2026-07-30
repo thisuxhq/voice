@@ -26,9 +26,9 @@ voice.use(logger({
 
 ## Phase mapping
 
-| Capability | Phase |
-| ---------- | ----- |
-| Core events (basis for metrics) | 1 |
-| Structured logger middleware | 2 |
-| Metrics middleware | 2 |
-| Provider failure / retry counters | 2 |
+| Capability | Phase | Status |
+| ---------- | ----- | ------ |
+| Core events (basis for metrics) | 1 | Done |
+| Structured logger middleware | 2 | Done (`@thisux/voice-observability`) |
+| Metrics middleware | 2 | Done |
+| Provider failure / retry counters | 2 | Done (`error.count`) |

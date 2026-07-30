@@ -5,6 +5,7 @@ voice-sdk/
 ├── README.md                 # Product entry (root only)
 ├── docs/                     # All product + design docs
 ├── packages/
+│   ├── voice                 # umbrella package
 │   ├── core
 │   ├── events
 │   ├── observability
@@ -12,28 +13,25 @@ voice-sdk/
 │   ├── session
 │   ├── transport-webrtc
 │   ├── transport-websocket
+│   ├── transport-sip
 │   ├── provider-openai
 │   ├── provider-groq
 │   ├── provider-elevenlabs
 │   ├── provider-cartesia
-│   ├── provider-deepgram
-│   ├── memory-redis
-│   ├── memory-postgres
 │   ├── plugin-twilio
-│   └── plugin-daily
+│   ├── provider-deepgram     # Phase 3+
+│   ├── memory-redis          # later
+│   ├── memory-postgres       # later
+│   └── plugin-daily          # later
 ├── examples/
-└── package.json              # workspace root
+│   ├── basic
+│   ├── offline-launch
+│   └── phase2-demo
+└── package.json
 ```
 
-## Package scope (Phase 1 scaffold)
+## Package scope
 
-Implemented first:
+**Phase 1 + 2 implemented:** core, events, state-machine, session, observability, transports (WebRTC / WebSocket / SIP), providers (OpenAI / Groq / Cartesia / ElevenLabs), Twilio plugin, umbrella `@thisux/voice`.
 
-- `core`, `events`, `state-machine`, `session`
-- `transport-webrtc`
-- `provider-openai`, `provider-groq`, `provider-cartesia`
-- `examples/basic`
-
-Stubs or deferred until later phases:
-
-- `observability`, Twilio/SIP plugins, remaining providers
+**Later:** Deepgram, memory drivers, Daily, video / multi-agent (Phase 3).

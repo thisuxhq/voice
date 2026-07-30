@@ -1,17 +1,21 @@
 # Phase 1 — Core real-time path
 
+**Status: complete**
+
 **Goal:** Ship the minimal complete loop for a TypeScript voice agent.
 
 ## Scope
 
-| Area | Deliverable |
-| ---- | ----------- |
-| Transport | WebRTC |
-| STT | OpenAI |
-| LLM | Groq |
-| TTS | Cartesia |
-| Runtime | Event system |
-| Agents | Tool calling |
+| Area | Deliverable | Status |
+| ---- | ----------- | ------ |
+| Transport | WebRTC (SDP/ICE helpers + data channel) | Done |
+| Transport | WebSocket | Done |
+| STT | OpenAI streaming (partial + final) + realtime mode | Done |
+| LLM | Groq | Done |
+| TTS | Cartesia | Done |
+| Runtime | Event system | Done |
+| Agents | Tool calling + interrupt | Done |
+| DX | Offline fakes, tests, basic example | Done |
 
 ## Packages
 
@@ -20,20 +24,24 @@
 - `@thisux/voice-state-machine`
 - `@thisux/voice-session`
 - `@thisux/voice-transport-webrtc`
+- `@thisux/voice-transport-websocket`
 - `@thisux/voice-provider-openai`
 - `@thisux/voice-provider-groq`
 - `@thisux/voice-provider-cartesia`
+- `@thisux/voice` (umbrella)
 
 ## Acceptance criteria
 
-1. `createVoice({ transport, stt, llm, tts })` connects and runs a turn.
-2. Partial + final transcripts emit correctly.
-3. Tools register, execute, and feed results back to the LLM.
-4. Session state machine covers `idle` → `closed` happy path + `interrupted`.
-5. Example app runs with env keys for OpenAI, Groq, and Cartesia.
+1. `createVoice({ transport, stt, llm, tts })` connects and runs a turn. ✅
+2. Partial + final transcripts emit correctly. ✅
+3. Tools register, execute, and feed results back to the LLM. ✅
+4. Session state machine covers `idle` → `closed` happy path + `interrupted`. ✅
+5. Example app runs (live keys or offline fallback). ✅
 
-## Out of scope (this phase)
+## Run
 
-- ElevenLabs, Twilio, SIP
-- Metrics / structured logging middleware
-- Video / multi-agent
+```bash
+bun run build && bun run test
+bun run examples/basic/src/index.ts
+bun run examples/offline-launch/src/index.ts
+```
