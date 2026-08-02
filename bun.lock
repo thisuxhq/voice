@@ -39,6 +39,22 @@
         "@thisux/voice": "workspace:*",
       },
     },
+    "examples/web-playground": {
+      "name": "@thisux/voice-example-web-playground",
+      "version": "0.0.1",
+      "dependencies": {
+        "@thisux/voice-core": "workspace:*",
+        "@thisux/voice-observability": "workspace:*",
+        "@thisux/voice-provider-cartesia": "workspace:*",
+        "@thisux/voice-provider-groq": "workspace:*",
+        "@thisux/voice-provider-openai": "workspace:*",
+        "hono": "^4.7.5",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.2.5",
+        "typescript": "^5.8.2",
+      },
+    },
     "packages/core": {
       "name": "@thisux/voice-core",
       "version": "0.0.1",
@@ -202,6 +218,8 @@
 
     "@thisux/voice-example-phase2-demo": ["@thisux/voice-example-phase2-demo@workspace:examples/phase2-demo"],
 
+    "@thisux/voice-example-web-playground": ["@thisux/voice-example-web-playground@workspace:examples/web-playground"],
+
     "@thisux/voice-observability": ["@thisux/voice-observability@workspace:packages/observability"],
 
     "@thisux/voice-plugin-twilio": ["@thisux/voice-plugin-twilio@workspace:packages/plugin-twilio"],
@@ -229,6 +247,8 @@
     "@types/node": ["@types/node@26.1.2", "", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-Vu4a5UFA9rIIFJ7rB/Vaafh9lrCQszopTCx6KjFboXTGQbPNasehVR5TEiithSDGyd1DEiUByggTZsg8jukeIg=="],
 
     "bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
+
+    "hono": ["hono@4.12.32", "", {}, "sha512-XcuyW9qE2kJn07PkecMOBd5Vq/hMy7mmGw+idz1yblbg9N17ijJODrvPkn7/dwL3Kulj8LcRJ69DLOWf91dRUg=="],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

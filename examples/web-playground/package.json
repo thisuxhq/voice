@@ -1,0 +1,22 @@
+{
+  "name": "@thisux/voice-example-web-playground",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --hot src/server.tsx",
+    "start": "bun run src/server.tsx"
+  },
+  "dependencies": {
+    "@thisux/voice-core": "workspace:*",
+    "@thisux/voice-provider-openai": "workspace:*",
+    "@thisux/voice-provider-groq": "workspace:*",
+    "@thisux/voice-provider-cartesia": "workspace:*",
+    "@thisux/voice-observability": "workspace:*",
+    "hono": "^4.7.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.5",
+    "typescript": "^5.8.2"
+  }
+}

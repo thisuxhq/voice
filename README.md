@@ -75,7 +75,7 @@ packages/
   provider-openai · provider-groq · provider-cartesia · provider-elevenlabs
   plugin-twilio
 examples/
-  basic · offline-launch · phase2-demo
+  basic · offline-launch · phase2-demo · web-playground
 ```
 
 ## Develop
@@ -88,6 +88,9 @@ bun run test
 bun run examples/offline-launch/src/index.ts
 bun run examples/phase2-demo/src/index.ts
 bun run examples/basic/src/index.ts   # live keys optional; offline fallback
+
+# Hono + JSX web app (http://localhost:8787)
+cd examples/web-playground && bun install && bun run dev
 ```
 
 ## Roadmap
