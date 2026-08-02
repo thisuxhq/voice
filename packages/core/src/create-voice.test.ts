@@ -188,6 +188,108 @@ describe("createVoice tools", () => {
   });
 });
 
+describe("createVoice parallel + multi-round tools", () => {
+  test("two tools in one round start concurrently", async () => {
+    const starts: number[] = [];
+    const llm = createFakeLLM([
+      [
+        {
+          type: "tool_call",
+          toolCall: {
+            id: "a",
+            name: "slowA",
+            arguments: "{}",
+          },
+        },
+        {
+          type: "tool_call",
+          toolCall: {
+            id: "b",
+            name: "slowB",
+            arguments: "{}",
+          },
+        },
+      ],
+      [{ type: "text", text: "done both" }],
+    ]);
+
+    const { voice, tts } = makeAgent({ llm });
+    const run = async (name: string) => {
+      starts.push(Date.now());
+      await delay(40);
+      return { name };
+    };
+    voice.tool({ name: "slowA", execute: () => run("a") });
+    voice.tool({ name: "slowB", execute: () => run("b") });
+
+    await voice.connect();
+    const t0 = Date.now();
+    await voice.say("both");
+    const elapsed = Date.now() - t0;
+
+    expect(starts).toHaveLength(2);
+    // Concurrent: both start near each other; wall clock << serial 80ms+
+    expect(Math.abs(starts[0]! - starts[1]!)).toBeLessThan(50);
+    expect(elapsed).toBeLessThan(150);
+    expect(tts.spokenTexts.join(" ")).toContain("done both");
+    await voice.disconnect();
+  });
+
+  test("multi-round tools up to maxToolRounds", async () => {
+    const llm = createFakeLLM([
+      [
+        {
+          type: "tool_call",
+          toolCall: {
+            id: "1",
+            name: "step",
+            arguments: JSON.stringify({ n: 1 }),
+          },
+        },
+      ],
+      [
+        {
+          type: "tool_call",
+          toolCall: {
+            id: "2",
+            name: "step",
+            arguments: JSON.stringify({ n: 2 }),
+          },
+        },
+      ],
+      [{ type: "text", text: "finished rounds" }],
+    ]);
+
+    const transport = createFakeTransport();
+    const stt = createFakeSTT();
+    const tts = createFakeTTS({ chunkCount: 1 });
+    const voice = createVoice({
+      transport,
+      stt,
+      llm,
+      tts,
+      maxToolRounds: 3,
+    });
+
+    const ns: number[] = [];
+    voice.tool({
+      name: "step",
+      async execute(input) {
+        ns.push(Number(input.n));
+        return { n: input.n };
+      },
+    });
+
+    await voice.connect();
+    await voice.say("multi");
+
+    expect(ns).toEqual([1, 2]);
+    expect(llm.calls).toBe(3);
+    expect(tts.spokenTexts.join(" ")).toContain("finished rounds");
+    await voice.disconnect();
+  });
+});
+
 describe("createVoice streamed TTS", () => {
   test("multi-sentence LLM chunks produce multiple speak() calls", async () => {
     const llm = createFakeLLM([
@@ -391,4 +493,8 @@ async function waitFor(
     }
     await new Promise((r) => setTimeout(r, 5));
   }
+}
+
+function delay(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }

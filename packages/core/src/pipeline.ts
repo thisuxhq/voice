@@ -144,38 +144,69 @@ export async function runTurn(
     }
   }
 
-  // Tool loop (single round — multi-round lands in a later stack layer)
-  if (pendingToolCalls.length > 0) {
+  // Tool loop: parallel execute per round, up to maxToolRounds follow-ups
+  let roundTools = pendingToolCalls;
+  let rounds = 0;
+  const maxRounds = Math.max(1, ctx.maxToolRounds);
+
+  while (roundTools.length > 0 && rounds < maxRounds) {
+    rounds += 1;
+
     const assistantMsg: Message = {
       role: "assistant",
       content: assistantText,
-      toolCalls: pendingToolCalls,
+      toolCalls: roundTools,
     };
     ctx.messages.push(assistantMsg);
 
-    for (const tc of pendingToolCalls) {
-      if (signal?.aborted) {
-        recoverFromAbort(ctx);
-        return;
-      }
-      await executeTool(ctx, events, tc, signal);
-      if (signal?.aborted) {
-        recoverFromAbort(ctx);
-        return;
-      }
+    if (signal?.aborted) {
+      clearTurnTimer();
+      recoverFromAbort(ctx);
+      return;
     }
 
-    // Second LLM pass after tools — always live-stream sentences when enabled
+    // Parallel tool execution (order of completion events may vary;
+    // tool result messages are appended in call order after settle).
+    const settled = await Promise.all(
+      roundTools.map(async (tc) => {
+        const result = await executeTool(ctx, events, tc, signal, {
+          deferMessage: true,
+        });
+        return { tc, result };
+      }),
+    );
+
+    for (const { tc, result } of settled) {
+      ctx.messages.push({
+        role: "tool",
+        content: JSON.stringify(result.output),
+        name: tc.name,
+        toolCallId: tc.id,
+      });
+    }
+
+    if (signal?.aborted) {
+      clearTurnTimer();
+      recoverFromAbort(ctx);
+      return;
+    }
+
+    // Next LLM pass — may request more tools or produce final text
     events.emit("llm.started", { ...createBaseEvent(sessionId) });
     assistantText = "";
     spokeAny = false;
+    const nextTools: ToolCall[] = [];
+    const allowMoreTools = rounds < maxRounds;
     const postFlusher = createSentenceFlusher({
       maxBufferChars: ctx.ttsStreaming.maxBufferChars,
     });
+    // Buffer speech while tools might still appear this pass
+    const liveThisPass = streaming && !allowMoreTools;
+    const buffered: string[] = [];
 
     try {
       for await (const chunk of ctx.llm.generate(ctx.messages, {
-        tools: [...ctx.tools.values()],
+        tools: allowMoreTools ? [...ctx.tools.values()] : undefined,
         signal,
       })) {
         if (signal?.aborted) break;
@@ -183,40 +214,69 @@ export async function runTurn(
           onText: async (text) => {
             assistantText += text;
             if (!streaming) return;
-            for (const segment of postFlusher.push(text)) {
-              if (signal?.aborted) break;
-              const ok = await speakSegment(ctx, events, segment, {
-                first: !spokeAny,
-                fullTextHint: assistantText,
-              });
-              if (ok) spokeAny = true;
+            const segs = postFlusher.push(text);
+            if (liveThisPass) {
+              for (const segment of segs) {
+                if (signal?.aborted) break;
+                const ok = await speakSegment(ctx, events, segment, {
+                  first: !spokeAny,
+                  fullTextHint: assistantText,
+                });
+                if (ok) spokeAny = true;
+              }
+            } else {
+              buffered.push(...segs);
             }
           },
-          onToolCall: () => {
-            // Multi-round tools land in a later stack layer
+          onToolCall: (tc) => {
+            if (allowMoreTools) nextTools.push(tc);
           },
         });
       }
     } catch (err) {
       if (signal?.aborted || isAbortError(err)) {
+        clearTurnTimer();
         recoverFromAbort(ctx);
         return;
       }
+      clearTurnTimer();
       throw err;
     }
 
-    if (streaming && !signal?.aborted) {
-      for (const segment of postFlusher.flush()) {
-        if (signal?.aborted) break;
-        const ok = await speakSegment(ctx, events, segment, {
-          first: !spokeAny,
-          fullTextHint: assistantText,
-        });
-        if (ok) spokeAny = true;
+    if (streaming) {
+      const tail = postFlusher.flush();
+      if (liveThisPass) {
+        for (const segment of tail) {
+          if (signal?.aborted) break;
+          const ok = await speakSegment(ctx, events, segment, {
+            first: !spokeAny,
+            fullTextHint: assistantText,
+          });
+          if (ok) spokeAny = true;
+        }
+      } else {
+        buffered.push(...tail);
       }
     }
 
     events.emit("llm.completed", { ...createBaseEvent(sessionId) });
+
+    if (nextTools.length === 0) {
+      // Final text after tools — speak buffered segments
+      if (streaming && buffered.length > 0 && !signal?.aborted) {
+        for (const segment of buffered) {
+          if (signal?.aborted) break;
+          const ok = await speakSegment(ctx, events, segment, {
+            first: !spokeAny,
+            fullTextHint: assistantText,
+          });
+          if (ok) spokeAny = true;
+        }
+      }
+      roundTools = [];
+    } else {
+      roundTools = nextTools;
+    }
   }
 
   if (signal?.aborted) {
@@ -350,7 +410,8 @@ async function executeTool(
   events: TypedEmitter<EventMap>,
   tc: ToolCall,
   signal?: AbortSignal,
-): Promise<void> {
+  opts?: { deferMessage?: boolean },
+): Promise<{ output: unknown; error?: Error }> {
   const sessionId = ctx.sessionManager.id;
   const def = ctx.tools.get(tc.name);
 
@@ -431,10 +492,14 @@ async function executeTool(
     error,
   });
 
-  ctx.messages.push({
-    role: "tool",
-    content: JSON.stringify(output),
-    name: tc.name,
-    toolCallId: tc.id,
-  });
+  if (!opts?.deferMessage) {
+    ctx.messages.push({
+      role: "tool",
+      content: JSON.stringify(output),
+      name: tc.name,
+      toolCallId: tc.id,
+    });
+  }
+
+  return { output, error };
 }
