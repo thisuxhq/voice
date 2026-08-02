@@ -25,6 +25,9 @@ Everything is event-based. Consumers subscribe with `voice.on(name, handler)`.
 
 | Event | When |
 | ----- | ---- |
+| `session.idle` | Silence policy fired while listening (Phase 2.5) |
+| `session.reconnecting` | Transport dropped; session id stable (Phase 2.5) |
+| `session.resumed` | Transport back online (Phase 2.5) |
 | `transcript.partial` | Interim STT result |
 | `transcript.final` | Final STT result |
 | `transcript` | Generic transcript surface |

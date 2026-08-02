@@ -6,6 +6,9 @@ import {
   type VoiceEventName,
 } from "@thisux/voice-events";
 import { createSession } from "@thisux/voice-session";
+import { createBargeInDetector, resolveBargeIn } from "./barge-in.js";
+import { attachMessageAccessors } from "./middleware/memory.js";
+import { attachToolWrapper } from "./middleware/safety.js";
 import { runTurn } from "./pipeline.js";
 import type {
   CreateVoiceOptions,
@@ -20,6 +23,10 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
   const sessionManager = createSession({ metadata: options.metadata });
   const tools = new Map<string, ToolDefinition>();
   const middlewares: Middleware[] = [];
+  const bargeIn = resolveBargeIn(options.bargeIn);
+  const bargeDetector = createBargeInDetector(bargeIn);
+  const ttsStreaming = resolveTtsStreaming(options.ttsStreaming);
+  const policies = resolvePolicies(options.policies);
 
   const ctx: InternalVoiceContext = {
     sessionManager,
@@ -31,6 +38,9 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
     messages: [],
     systemPrompt: options.systemPrompt ?? "You are a helpful voice assistant.",
     abortController: null,
+    ttsStreaming,
+    policies,
+    maxToolRounds: options.maxToolRounds ?? 3,
   };
 
   if (ctx.systemPrompt) {
@@ -40,6 +50,39 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
   let connected = false;
   let unsubAudio: (() => void) | undefined;
   let unsubTranscript: (() => void) | undefined;
+  let unsubState: (() => void) | undefined;
+  let unsubConn: (() => void) | undefined;
+  let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  let silenceFired = false;
+  let reconnecting = false;
+
+  function clearSilenceTimer() {
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+  }
+
+  function armSilenceTimer() {
+    clearSilenceTimer();
+    const ms = policies.silenceTimeoutMs;
+    if (ms == null || ms <= 0 || !connected) return;
+    if (sessionManager.state !== "listening") return;
+    silenceTimer = setTimeout(() => {
+      silenceTimer = null;
+      if (!connected || sessionManager.state !== "listening") return;
+      events.emit("session.idle", {
+        ...createBaseEvent(sessionManager.id),
+        state: sessionManager.state,
+      });
+      if (!silenceFired && policies.silencePrompt.trim()) {
+        silenceFired = true;
+        void handleFinalTranscript(policies.silencePrompt, {
+          emitTranscript: true,
+        });
+      }
+    }, ms);
+  }
 
   const agent: VoiceAgent = {
     get session() {
@@ -72,10 +115,42 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
         await ctx.transport.connect();
         await ctx.stt.connect();
 
-        // Audio from transport → STT
+        // Arm / disarm barge-in + silence timer on state changes.
+        unsubState = sessionManager.onTransition((_from, to) => {
+          if (bargeIn.enabled) {
+            if (to === "speaking" || to === "thinking") {
+              bargeDetector.arm();
+            } else if (
+              to === "listening" ||
+              to === "interrupted" ||
+              to === "closed" ||
+              to === "failed"
+            ) {
+              bargeDetector.disarm();
+            }
+          }
+          if (to === "listening") {
+            armSilenceTimer();
+          } else {
+            clearSilenceTimer();
+            if (to === "thinking" || to === "speaking") {
+              silenceFired = false;
+            }
+          }
+        });
+
+        // Audio from transport → STT (+ optional energy barge-in)
         if (ctx.transport.onAudio) {
           const off = ctx.transport.onAudio((chunk) => {
             ctx.stt.transcribe(chunk);
+            if (
+              bargeIn.enabled &&
+              bargeDetector.push(chunk) &&
+              (sessionManager.state === "speaking" ||
+                sessionManager.state === "thinking")
+            ) {
+              void agent.interrupt();
+            }
           });
           if (typeof off === "function") unsubAudio = off;
         }
@@ -105,9 +180,59 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
           if (typeof off === "function") unsubTranscript = off;
         }
 
+        // Transport drop / restore (session id stays stable)
+        if (ctx.transport.onConnectionState) {
+          const off = ctx.transport.onConnectionState((state) => {
+            if (!connected) return;
+            if (state === "offline") {
+              reconnecting = true;
+              clearSilenceTimer();
+              ctx.abortController?.abort();
+              ctx.tts.abort?.();
+              sessionManager.tryTransition("reconnecting");
+              events.emit("session.reconnecting", {
+                ...createBaseEvent(sessionManager.id),
+                state: "reconnecting",
+              });
+              return;
+            }
+            if (state === "online" && reconnecting) {
+              void (async () => {
+                try {
+                  await ctx.transport.connect();
+                  await ctx.stt.connect();
+                } catch (err) {
+                  const error =
+                    err instanceof Error ? err : new Error(String(err));
+                  events.emit("error", {
+                    ...createBaseEvent(sessionManager.id),
+                    error,
+                    fatal: false,
+                  });
+                  return;
+                }
+                reconnecting = false;
+                sessionManager.tryTransition("connected");
+                sessionManager.tryTransition("listening");
+                events.emit("session.resumed", {
+                  ...createBaseEvent(sessionManager.id),
+                  state: sessionManager.state,
+                });
+                events.emit("connected", {
+                  ...createBaseEvent(sessionManager.id),
+                  state: sessionManager.state,
+                });
+                armSilenceTimer();
+              })();
+            }
+          });
+          if (typeof off === "function") unsubConn = off;
+        }
+
         sessionManager.transition("connected");
         sessionManager.tryTransition("listening");
         connected = true;
+        armSilenceTimer();
 
         events.emit("connected", {
           ...createBaseEvent(sessionManager.id),
@@ -131,8 +256,15 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
 
       unsubAudio?.();
       unsubTranscript?.();
+      unsubState?.();
+      unsubConn?.();
       unsubAudio = undefined;
       unsubTranscript = undefined;
+      unsubState = undefined;
+      unsubConn = undefined;
+      clearSilenceTimer();
+      reconnecting = false;
+      bargeDetector.disarm();
 
       try {
         await ctx.stt.disconnect();
@@ -231,6 +363,31 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
     }
   }
 
+  attachMessageAccessors(agent, {
+    getMessages: () => ctx.messages.map((m) => ({ ...m })),
+    replaceMessages: (messages) => {
+      ctx.messages.length = 0;
+      for (const m of messages) ctx.messages.push({ ...m });
+      // Ensure system prompt remains if store omitted it
+      if (
+        ctx.systemPrompt &&
+        !ctx.messages.some((m) => m.role === "system")
+      ) {
+        ctx.messages.unshift({ role: "system", content: ctx.systemPrompt });
+      }
+    },
+  });
+
+  attachToolWrapper(agent, (wrapper) => {
+    for (const [name, def] of tools) {
+      tools.set(name, wrapper(def));
+    }
+    const prev = agent.tool.bind(agent);
+    agent.tool = (definition) => {
+      prev(wrapper(definition));
+    };
+  });
+
   return agent;
 }
 
@@ -249,4 +406,30 @@ async function runWithMiddleware(
     await mw(voice, next);
   };
   await next();
+}
+
+function resolveTtsStreaming(
+  input?: boolean | { enabled?: boolean; maxBufferChars?: number },
+): { enabled: boolean; maxBufferChars: number } {
+  if (input === false) {
+    return { enabled: false, maxBufferChars: 180 };
+  }
+  const opts = input === true || input === undefined ? {} : input;
+  return {
+    enabled: opts.enabled !== false,
+    maxBufferChars: opts.maxBufferChars ?? 180,
+  };
+}
+
+function resolvePolicies(
+  input?: import("./types.js").SessionPolicies,
+): import("./types.js").ResolvedPolicies {
+  return {
+    silenceTimeoutMs:
+      input?.silenceTimeoutMs === undefined ? null : input.silenceTimeoutMs,
+    silencePrompt: input?.silencePrompt ?? "Are you still there?",
+    toolTimeoutMs:
+      input?.toolTimeoutMs === undefined ? 15_000 : input.toolTimeoutMs,
+    maxTurnMs: input?.maxTurnMs === undefined ? null : input.maxTurnMs,
+  };
 }

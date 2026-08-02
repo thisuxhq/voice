@@ -14,8 +14,31 @@ const voice = createVoice({
   stt: openai(),
   llm: groq(),
   tts: cartesia(),
+  // Phase 2.5 — optional
+  bargeIn: true, // energy barge-in while speaking (default on)
 });
 ```
+
+### Barge-in options
+
+| Option | Default | Meaning |
+| ------ | ------- | ------- |
+| `bargeIn: false` | — | Disable audio-driven interrupt |
+| `energyThreshold` | `0.025` | RMS 0–1 on s16le PCM |
+| `minFrames` | `3` | Consecutive hot chunks before interrupt |
+| `graceMs` | `250` | Ignore mic energy right after speech starts |
+
+Manual: `await voice.interrupt()` — see [interruptions.md](./interruptions.md).
+
+### TTS streaming options
+
+| Option | Default | Meaning |
+| ------ | ------- | ------- |
+| `ttsStreaming: false` | — | Wait for full assistant text before TTS |
+| `ttsStreaming: true` | default | Flush TTS on sentence boundaries while LLM streams |
+| `maxBufferChars` | `180` | Force flush if no punctuation yet |
+
+When tools are registered, first-pass speech is held until the LLM stream finishes without tool calls (avoids “Let me check…” then a tool). Post-tool replies stream live. Agents with **no** tools stream sentences as tokens arrive.
 
 ## Connection lifecycle
 
@@ -60,7 +83,10 @@ voice.tool({
 ```ts
 voice.use(logger());
 voice.use(metrics());
-voice.use(memory());
+voice.use(logger());
+voice.use(metrics());
+voice.use(memory({ store: createInMemoryStore() })); // Phase 2.5 stub
+voice.use(safety({ checkTranscript: (t) => ({ block: false }) }));
 ```
 
 Middleware wraps the pipeline (session hooks, audio, LLM, tools, TTS).

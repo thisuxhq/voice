@@ -177,7 +177,8 @@ Full index: [docs/README.md](./docs/README.md).
 
 1. **Phase 1** — ✅ Core loop, WebRTC, OpenAI STT, Groq, Cartesia, events, tools  
 2. **Phase 2** — ✅ ElevenLabs, Twilio, SIP, WebSocket, logger/metrics  
-3. **Phase 3** — Video, avatars, multi-agent workflows  
+3. **Phase 2.5** — 🔄 Audio barge-in, streamed TTS, session policies, parallel tools, reconnect ([doc](./docs/phases/phase-2.5.md))  
+4. **Phase 3** — Video, avatars, multi-agent workflows  
 
 Not goals: training models, owning a telephony network, or a proprietary foundation model.
 

@@ -4,6 +4,9 @@ export interface EventMap {
   // Session
   "session.started": SessionEvent;
   "session.closed": SessionEvent;
+  "session.idle": SessionEvent;
+  "session.reconnecting": SessionEvent;
+  "session.resumed": SessionEvent;
   connected: SessionEvent;
   error: ErrorEvent;
 
