@@ -6,6 +6,7 @@ import {
   type VoiceEventName,
 } from "@thisux/voice-events";
 import { createSession } from "@thisux/voice-session";
+import { createBargeInDetector, resolveBargeIn } from "./barge-in.js";
 import { runTurn } from "./pipeline.js";
 import type {
   CreateVoiceOptions,
@@ -20,6 +21,8 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
   const sessionManager = createSession({ metadata: options.metadata });
   const tools = new Map<string, ToolDefinition>();
   const middlewares: Middleware[] = [];
+  const bargeIn = resolveBargeIn(options.bargeIn);
+  const bargeDetector = createBargeInDetector(bargeIn);
 
   const ctx: InternalVoiceContext = {
     sessionManager,
@@ -40,6 +43,7 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
   let connected = false;
   let unsubAudio: (() => void) | undefined;
   let unsubTranscript: (() => void) | undefined;
+  let unsubState: (() => void) | undefined;
 
   const agent: VoiceAgent = {
     get session() {
@@ -72,10 +76,34 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
         await ctx.transport.connect();
         await ctx.stt.connect();
 
-        // Audio from transport → STT
+        // Arm / disarm barge-in when session enters interruptible states.
+        if (bargeIn.enabled) {
+          unsubState = sessionManager.onTransition((_from, to) => {
+            if (to === "speaking" || to === "thinking") {
+              bargeDetector.arm();
+            } else if (
+              to === "listening" ||
+              to === "interrupted" ||
+              to === "closed" ||
+              to === "failed"
+            ) {
+              bargeDetector.disarm();
+            }
+          });
+        }
+
+        // Audio from transport → STT (+ optional energy barge-in)
         if (ctx.transport.onAudio) {
           const off = ctx.transport.onAudio((chunk) => {
             ctx.stt.transcribe(chunk);
+            if (
+              bargeIn.enabled &&
+              bargeDetector.push(chunk) &&
+              (sessionManager.state === "speaking" ||
+                sessionManager.state === "thinking")
+            ) {
+              void agent.interrupt();
+            }
           });
           if (typeof off === "function") unsubAudio = off;
         }
@@ -131,8 +159,11 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
 
       unsubAudio?.();
       unsubTranscript?.();
+      unsubState?.();
       unsubAudio = undefined;
       unsubTranscript = undefined;
+      unsubState = undefined;
+      bargeDetector.disarm();
 
       try {
         await ctx.stt.disconnect();

@@ -5,6 +5,9 @@ import type {
   VoiceEventName,
   EventHandler,
 } from "@thisux/voice-events";
+import type { BargeInOptions } from "./barge-in.js";
+
+export type { BargeInOptions };
 
 /** Chat message for LLM providers */
 export interface Message {
@@ -85,6 +88,12 @@ export interface CreateVoiceOptions {
   tts: TTSProvider;
   systemPrompt?: string;
   metadata?: Record<string, unknown>;
+  /**
+   * Interrupt when inbound mic energy is high while thinking/speaking.
+   * Pass `false` to disable (push-to-talk / upstream barge-in).
+   * Default: enabled with sensible energy defaults.
+   */
+  bargeIn?: boolean | BargeInOptions;
 }
 
 export type Middleware = (

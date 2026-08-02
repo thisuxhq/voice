@@ -1,7 +1,14 @@
 export { createVoice } from "./create-voice.js";
 export { runTurn } from "./pipeline.js";
+export {
+  resolveBargeIn,
+  pcmS16leRms,
+  createBargeInDetector,
+} from "./barge-in.js";
+export type { ResolvedBargeIn } from "./barge-in.js";
 export type {
   CreateVoiceOptions,
+  BargeInOptions,
   VoiceAgent,
   Middleware,
   ToolDefinition,

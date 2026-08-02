@@ -14,8 +14,21 @@ const voice = createVoice({
   stt: openai(),
   llm: groq(),
   tts: cartesia(),
+  // Phase 2.5 — optional
+  bargeIn: true, // energy barge-in while speaking (default on)
 });
 ```
+
+### Barge-in options
+
+| Option | Default | Meaning |
+| ------ | ------- | ------- |
+| `bargeIn: false` | — | Disable audio-driven interrupt |
+| `energyThreshold` | `0.025` | RMS 0–1 on s16le PCM |
+| `minFrames` | `3` | Consecutive hot chunks before interrupt |
+| `graceMs` | `250` | Ignore mic energy right after speech starts |
+
+Manual: `await voice.interrupt()` — see [interruptions.md](./interruptions.md).
 
 ## Connection lifecycle
 
