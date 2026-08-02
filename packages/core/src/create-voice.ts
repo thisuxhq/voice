@@ -7,6 +7,8 @@ import {
 } from "@thisux/voice-events";
 import { createSession } from "@thisux/voice-session";
 import { createBargeInDetector, resolveBargeIn } from "./barge-in.js";
+import { attachMessageAccessors } from "./middleware/memory.js";
+import { attachToolWrapper } from "./middleware/safety.js";
 import { runTurn } from "./pipeline.js";
 import type {
   CreateVoiceOptions,
@@ -360,6 +362,31 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
       sessionManager.tryTransition("listening");
     }
   }
+
+  attachMessageAccessors(agent, {
+    getMessages: () => ctx.messages.map((m) => ({ ...m })),
+    replaceMessages: (messages) => {
+      ctx.messages.length = 0;
+      for (const m of messages) ctx.messages.push({ ...m });
+      // Ensure system prompt remains if store omitted it
+      if (
+        ctx.systemPrompt &&
+        !ctx.messages.some((m) => m.role === "system")
+      ) {
+        ctx.messages.unshift({ role: "system", content: ctx.systemPrompt });
+      }
+    },
+  });
+
+  attachToolWrapper(agent, (wrapper) => {
+    for (const [name, def] of tools) {
+      tools.set(name, wrapper(def));
+    }
+    const prev = agent.tool.bind(agent);
+    agent.tool = (definition) => {
+      prev(wrapper(definition));
+    };
+  });
 
   return agent;
 }

@@ -14,6 +14,9 @@ export {
   createFakeLLM,
   createFakeTTS,
   createEchoLLM,
+  memory,
+  createInMemoryStore,
+  safety,
 } from "@thisux/voice-core";
 export type {
   CreateVoiceOptions,
@@ -33,6 +36,13 @@ export type {
   SessionState,
   EventMap,
   VoiceEventName,
+  MemoryStore,
+  MemoryMiddlewareOptions,
+  SafetyCheckResult,
+  SafetyMiddlewareOptions,
+  SessionPolicies,
+  BargeInOptions,
+  TtsStreamingOptions,
 } from "@thisux/voice-core";
 
 // Transports

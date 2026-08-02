@@ -1,6 +1,6 @@
 # Phase 2.5 — Premium duplex + latency
 
-**Status: in progress**
+**Status: implemented (stacked PRs)**
 
 **Goal:** Make the SDK *feel* like a production voice product without becoming one.
 Close the highest-leverage gaps between Phase 1–2 (working agent loop) and ChatGPT-class duplex UX.

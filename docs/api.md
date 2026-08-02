@@ -83,7 +83,10 @@ voice.tool({
 ```ts
 voice.use(logger());
 voice.use(metrics());
-voice.use(memory());
+voice.use(logger());
+voice.use(metrics());
+voice.use(memory({ store: createInMemoryStore() })); // Phase 2.5 stub
+voice.use(safety({ checkTranscript: (t) => ({ block: false }) }));
 ```
 
 Middleware wraps the pipeline (session hooks, audio, LLM, tools, TTS).
