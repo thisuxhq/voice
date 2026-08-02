@@ -49,8 +49,10 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
   let unsubAudio: (() => void) | undefined;
   let unsubTranscript: (() => void) | undefined;
   let unsubState: (() => void) | undefined;
+  let unsubConn: (() => void) | undefined;
   let silenceTimer: ReturnType<typeof setTimeout> | null = null;
   let silenceFired = false;
+  let reconnecting = false;
 
   function clearSilenceTimer() {
     if (silenceTimer) {
@@ -176,6 +178,55 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
           if (typeof off === "function") unsubTranscript = off;
         }
 
+        // Transport drop / restore (session id stays stable)
+        if (ctx.transport.onConnectionState) {
+          const off = ctx.transport.onConnectionState((state) => {
+            if (!connected) return;
+            if (state === "offline") {
+              reconnecting = true;
+              clearSilenceTimer();
+              ctx.abortController?.abort();
+              ctx.tts.abort?.();
+              sessionManager.tryTransition("reconnecting");
+              events.emit("session.reconnecting", {
+                ...createBaseEvent(sessionManager.id),
+                state: "reconnecting",
+              });
+              return;
+            }
+            if (state === "online" && reconnecting) {
+              void (async () => {
+                try {
+                  await ctx.transport.connect();
+                  await ctx.stt.connect();
+                } catch (err) {
+                  const error =
+                    err instanceof Error ? err : new Error(String(err));
+                  events.emit("error", {
+                    ...createBaseEvent(sessionManager.id),
+                    error,
+                    fatal: false,
+                  });
+                  return;
+                }
+                reconnecting = false;
+                sessionManager.tryTransition("connected");
+                sessionManager.tryTransition("listening");
+                events.emit("session.resumed", {
+                  ...createBaseEvent(sessionManager.id),
+                  state: sessionManager.state,
+                });
+                events.emit("connected", {
+                  ...createBaseEvent(sessionManager.id),
+                  state: sessionManager.state,
+                });
+                armSilenceTimer();
+              })();
+            }
+          });
+          if (typeof off === "function") unsubConn = off;
+        }
+
         sessionManager.transition("connected");
         sessionManager.tryTransition("listening");
         connected = true;
@@ -204,10 +255,13 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
       unsubAudio?.();
       unsubTranscript?.();
       unsubState?.();
+      unsubConn?.();
       unsubAudio = undefined;
       unsubTranscript = undefined;
       unsubState = undefined;
+      unsubConn = undefined;
       clearSilenceTimer();
+      reconnecting = false;
       bargeDetector.disarm();
 
       try {

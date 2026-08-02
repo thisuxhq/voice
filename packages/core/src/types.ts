@@ -74,11 +74,21 @@ export interface TTSProvider {
   abort?(): void;
 }
 
+export type TransportConnectionState = "online" | "offline";
+
 export interface TransportProvider {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   send(data: Uint8Array): void;
   onAudio?(handler: (chunk: Uint8Array) => void): void | (() => void);
+  /**
+   * Optional connection lifecycle (Phase 2.5).
+   * Emit `offline` on drop and `online` after the transport is usable again.
+   * Core keeps `session.id` stable across reconnects.
+   */
+  onConnectionState?(
+    handler: (state: TransportConnectionState) => void,
+  ): void | (() => void);
 }
 
 export interface TtsStreamingOptions {

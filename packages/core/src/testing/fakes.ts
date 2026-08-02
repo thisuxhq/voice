@@ -13,12 +13,19 @@ export interface FakeTransport extends TransportProvider {
   readonly sent: Uint8Array[];
   /** Push remote audio into onAudio handlers (simulates mic). */
   pushAudio(chunk: Uint8Array): void;
+  /** Simulate network drop (emits connection state offline). */
+  goOffline(): void;
+  /** Simulate network restore (emits connection state online). */
+  goOnline(): void;
 }
 
 export function createFakeTransport(): FakeTransport {
   let connected = false;
   const sent: Uint8Array[] = [];
   const audioHandlers = new Set<(chunk: Uint8Array) => void>();
+  const connHandlers = new Set<
+    (state: "online" | "offline") => void
+  >();
 
   return {
     get connected() {
@@ -41,8 +48,20 @@ export function createFakeTransport(): FakeTransport {
       audioHandlers.add(handler);
       return () => audioHandlers.delete(handler);
     },
+    onConnectionState(handler) {
+      connHandlers.add(handler);
+      return () => connHandlers.delete(handler);
+    },
     pushAudio(chunk: Uint8Array) {
       for (const h of audioHandlers) h(chunk);
+    },
+    goOffline() {
+      connected = false;
+      for (const h of connHandlers) h("offline");
+    },
+    goOnline() {
+      connected = true;
+      for (const h of connHandlers) h("online");
     },
   };
 }
