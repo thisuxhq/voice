@@ -188,6 +188,90 @@ describe("createVoice tools", () => {
   });
 });
 
+describe("createVoice streamed TTS", () => {
+  test("multi-sentence LLM chunks produce multiple speak() calls", async () => {
+    const llm = createFakeLLM([
+      [
+        { type: "text", text: "First sentence. " },
+        { type: "text", text: "Second sentence. " },
+        { type: "text", text: "Third one!" },
+      ],
+    ]);
+    const tts = createFakeTTS({ chunkCount: 1 });
+    const { voice } = makeAgent({ llm, tts });
+
+    await voice.connect();
+    await voice.say("hi");
+
+    expect(tts.speakCalls).toBeGreaterThanOrEqual(2);
+    expect(tts.spokenTexts.join(" ")).toContain("First sentence.");
+    expect(tts.spokenTexts.join(" ")).toContain("Second sentence.");
+    expect(tts.spokenTexts.join(" ")).toContain("Third one!");
+    expect(voice.session.state).toBe("listening");
+    await voice.disconnect();
+  });
+
+  test("ttsStreaming: false speaks once with full text", async () => {
+    const llm = createFakeLLM([
+      [
+        { type: "text", text: "First sentence. " },
+        { type: "text", text: "Second sentence." },
+      ],
+    ]);
+    const transport = createFakeTransport();
+    const stt = createFakeSTT();
+    const tts = createFakeTTS({ chunkCount: 1 });
+    const voice = createVoice({
+      transport,
+      stt,
+      llm,
+      tts,
+      ttsStreaming: false,
+    });
+
+    await voice.connect();
+    await voice.say("hi");
+
+    expect(tts.speakCalls).toBe(1);
+    expect(tts.spokenTexts[0]).toBe("First sentence. Second sentence.");
+    await voice.disconnect();
+  });
+
+  test("tool calls suppress pre-tool streamed speech", async () => {
+    const llm = createFakeLLM([
+      [
+        { type: "text", text: "Let me check. " },
+        {
+          type: "tool_call",
+          toolCall: {
+            id: "c1",
+            name: "lookup",
+            arguments: "{}",
+          },
+        },
+      ],
+      [{ type: "text", text: "All good." }],
+    ]);
+    const tts = createFakeTTS({ chunkCount: 1 });
+    const { voice } = makeAgent({ llm, tts });
+    voice.tool({
+      name: "lookup",
+      async execute() {
+        return { ok: true };
+      },
+    });
+
+    await voice.connect();
+    await voice.say("check");
+
+    expect(tts.spokenTexts.some((t) => t.includes("Let me check"))).toBe(
+      false,
+    );
+    expect(tts.spokenTexts.join(" ")).toContain("All good.");
+    await voice.disconnect();
+  });
+});
+
 describe("createVoice interrupt", () => {
   test("interrupt mid-TTS aborts speech, keeps session id, returns to listening", async () => {
     const tts = createFakeTTS({ chunkDelayMs: 40, chunkCount: 30 });

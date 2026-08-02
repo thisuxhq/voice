@@ -81,6 +81,13 @@ export interface TransportProvider {
   onAudio?(handler: (chunk: Uint8Array) => void): void | (() => void);
 }
 
+export interface TtsStreamingOptions {
+  /** Enable sentence-level TTS while the LLM streams. Default true. */
+  enabled?: boolean;
+  /** Force a flush after this many buffered chars. Default 180. */
+  maxBufferChars?: number;
+}
+
 export interface CreateVoiceOptions {
   transport: TransportProvider;
   stt: STTProvider;
@@ -94,6 +101,11 @@ export interface CreateVoiceOptions {
    * Default: enabled with sensible energy defaults.
    */
   bargeIn?: boolean | BargeInOptions;
+  /**
+   * Stream TTS per sentence as LLM tokens arrive (no tools pending).
+   * Pass `false` to wait for the full assistant string. Default true.
+   */
+  ttsStreaming?: boolean | TtsStreamingOptions;
 }
 
 export type Middleware = (
@@ -121,6 +133,11 @@ export interface VoiceAgent {
   say(text: string): Promise<void>;
 }
 
+export interface ResolvedTtsStreaming {
+  enabled: boolean;
+  maxBufferChars: number;
+}
+
 export interface InternalVoiceContext {
   sessionManager: SessionManager;
   transport: TransportProvider;
@@ -131,4 +148,5 @@ export interface InternalVoiceContext {
   messages: Message[];
   systemPrompt: string;
   abortController: AbortController | null;
+  ttsStreaming: ResolvedTtsStreaming;
 }

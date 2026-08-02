@@ -23,6 +23,7 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
   const middlewares: Middleware[] = [];
   const bargeIn = resolveBargeIn(options.bargeIn);
   const bargeDetector = createBargeInDetector(bargeIn);
+  const ttsStreaming = resolveTtsStreaming(options.ttsStreaming);
 
   const ctx: InternalVoiceContext = {
     sessionManager,
@@ -34,6 +35,7 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
     messages: [],
     systemPrompt: options.systemPrompt ?? "You are a helpful voice assistant.",
     abortController: null,
+    ttsStreaming,
   };
 
   if (ctx.systemPrompt) {
@@ -280,4 +282,17 @@ async function runWithMiddleware(
     await mw(voice, next);
   };
   await next();
+}
+
+function resolveTtsStreaming(
+  input?: boolean | { enabled?: boolean; maxBufferChars?: number },
+): { enabled: boolean; maxBufferChars: number } {
+  if (input === false) {
+    return { enabled: false, maxBufferChars: 180 };
+  }
+  const opts = input === true || input === undefined ? {} : input;
+  return {
+    enabled: opts.enabled !== false,
+    maxBufferChars: opts.maxBufferChars ?? 180,
+  };
 }

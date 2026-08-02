@@ -6,9 +6,11 @@ export {
   createBargeInDetector,
 } from "./barge-in.js";
 export type { ResolvedBargeIn } from "./barge-in.js";
+export { createSentenceFlusher } from "./sentence-flush.js";
 export type {
   CreateVoiceOptions,
   BargeInOptions,
+  TtsStreamingOptions,
   VoiceAgent,
   Middleware,
   ToolDefinition,

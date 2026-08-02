@@ -30,6 +30,16 @@ const voice = createVoice({
 
 Manual: `await voice.interrupt()` — see [interruptions.md](./interruptions.md).
 
+### TTS streaming options
+
+| Option | Default | Meaning |
+| ------ | ------- | ------- |
+| `ttsStreaming: false` | — | Wait for full assistant text before TTS |
+| `ttsStreaming: true` | default | Flush TTS on sentence boundaries while LLM streams |
+| `maxBufferChars` | `180` | Force flush if no punctuation yet |
+
+When tools are registered, first-pass speech is held until the LLM stream finishes without tool calls (avoids “Let me check…” then a tool). Post-tool replies stream live. Agents with **no** tools stream sentences as tokens arrive.
+
 ## Connection lifecycle
 
 ```ts

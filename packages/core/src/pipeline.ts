@@ -3,6 +3,7 @@ import {
   type TypedEmitter,
   type EventMap,
 } from "@thisux/voice-events";
+import { createSentenceFlusher } from "./sentence-flush.js";
 import type {
   InternalVoiceContext,
   LLMChunk,
@@ -13,6 +14,11 @@ import type {
 /**
  * Run one agent turn from a final user transcript:
  * LLM → optional tools → LLM → TTS → transport.
+ *
+ * TTS streaming (Phase 2.5):
+ * - Sentence-flush speak while tokens arrive when safe.
+ * - First pass with registered tools: buffer until stream ends (no pre-tool speech).
+ * - Post-tool / no-tools: live sentence streaming.
  */
 export async function runTurn(
   ctx: InternalVoiceContext,
@@ -21,6 +27,9 @@ export async function runTurn(
 ): Promise<void> {
   const sessionId = ctx.sessionManager.id;
   const signal = ctx.abortController?.signal;
+  const streaming = ctx.ttsStreaming.enabled;
+  // Live first-pass speech only when the agent has no tools (no tool_call risk).
+  const liveFirstPass = streaming && ctx.tools.size === 0;
 
   ctx.messages.push({ role: "user", content: userText });
   ctx.sessionManager.tryTransition("thinking");
@@ -31,6 +40,11 @@ export async function runTurn(
 
   let assistantText = "";
   const pendingToolCalls: ToolCall[] = [];
+  let spokeAny = false;
+  const firstFlusher = createSentenceFlusher({
+    maxBufferChars: ctx.ttsStreaming.maxBufferChars,
+  });
+  const bufferedFirst: string[] = [];
 
   try {
     for await (const chunk of ctx.llm.generate(ctx.messages, {
@@ -39,8 +53,22 @@ export async function runTurn(
     })) {
       if (signal?.aborted) break;
       await handleChunk(chunk, {
-        onText: (text) => {
+        onText: async (text) => {
           assistantText += text;
+          if (!streaming) return;
+          const segs = firstFlusher.push(text);
+          if (liveFirstPass) {
+            for (const segment of segs) {
+              if (signal?.aborted) break;
+              const ok = await speakSegment(ctx, events, segment, {
+                first: !spokeAny,
+                fullTextHint: assistantText,
+              });
+              if (ok) spokeAny = true;
+            }
+          } else {
+            bufferedFirst.push(...segs);
+          }
         },
         onToolCall: (tc) => {
           pendingToolCalls.push(tc);
@@ -55,6 +83,22 @@ export async function runTurn(
     throw err;
   }
 
+  if (streaming) {
+    const tail = firstFlusher.flush();
+    if (liveFirstPass) {
+      for (const segment of tail) {
+        if (signal?.aborted) break;
+        const ok = await speakSegment(ctx, events, segment, {
+          first: !spokeAny,
+          fullTextHint: assistantText,
+        });
+        if (ok) spokeAny = true;
+      }
+    } else {
+      bufferedFirst.push(...tail);
+    }
+  }
+
   events.emit("llm.completed", {
     ...createBaseEvent(sessionId),
   });
@@ -64,7 +108,24 @@ export async function runTurn(
     return;
   }
 
-  // Tool loop (single round for Phase 1)
+  // Speak buffered first-pass text only when there were no tools.
+  if (
+    streaming &&
+    !liveFirstPass &&
+    pendingToolCalls.length === 0 &&
+    bufferedFirst.length > 0
+  ) {
+    for (const segment of bufferedFirst) {
+      if (signal?.aborted) break;
+      const ok = await speakSegment(ctx, events, segment, {
+        first: !spokeAny,
+        fullTextHint: assistantText,
+      });
+      if (ok) spokeAny = true;
+    }
+  }
+
+  // Tool loop (single round — multi-round lands in a later stack layer)
   if (pendingToolCalls.length > 0) {
     const assistantMsg: Message = {
       role: "assistant",
@@ -85,9 +146,14 @@ export async function runTurn(
       }
     }
 
-    // Second LLM pass after tools
+    // Second LLM pass after tools — always live-stream sentences when enabled
     events.emit("llm.started", { ...createBaseEvent(sessionId) });
     assistantText = "";
+    spokeAny = false;
+    const postFlusher = createSentenceFlusher({
+      maxBufferChars: ctx.ttsStreaming.maxBufferChars,
+    });
+
     try {
       for await (const chunk of ctx.llm.generate(ctx.messages, {
         tools: [...ctx.tools.values()],
@@ -95,11 +161,20 @@ export async function runTurn(
       })) {
         if (signal?.aborted) break;
         await handleChunk(chunk, {
-          onText: (text) => {
+          onText: async (text) => {
             assistantText += text;
+            if (!streaming) return;
+            for (const segment of postFlusher.push(text)) {
+              if (signal?.aborted) break;
+              const ok = await speakSegment(ctx, events, segment, {
+                first: !spokeAny,
+                fullTextHint: assistantText,
+              });
+              if (ok) spokeAny = true;
+            }
           },
           onToolCall: () => {
-            // Phase 1: ignore nested tool calls after first round
+            // Multi-round tools land in a later stack layer
           },
         });
       }
@@ -110,6 +185,18 @@ export async function runTurn(
       }
       throw err;
     }
+
+    if (streaming && !signal?.aborted) {
+      for (const segment of postFlusher.flush()) {
+        if (signal?.aborted) break;
+        const ok = await speakSegment(ctx, events, segment, {
+          first: !spokeAny,
+          fullTextHint: assistantText,
+        });
+        if (ok) spokeAny = true;
+      }
+    }
+
     events.emit("llm.completed", { ...createBaseEvent(sessionId) });
   }
 
@@ -119,42 +206,94 @@ export async function runTurn(
   }
 
   if (!assistantText.trim()) {
-    ctx.sessionManager.tryTransition("listening");
-    return;
-  }
-
-  ctx.messages.push({ role: "assistant", content: assistantText });
-
-  // TTS
-  ctx.sessionManager.tryTransition("speaking");
-  events.emit("tts.started", {
-    ...createBaseEvent(sessionId),
-    text: assistantText,
-  });
-  events.emit("speech.started", {
-    ...createBaseEvent(sessionId),
-    role: "assistant",
-  });
-
-  try {
-    for await (const audio of ctx.tts.speak(assistantText, { signal })) {
-      if (signal?.aborted) break;
-      ctx.transport.send(audio);
-    }
-  } finally {
-    events.emit("tts.completed", {
-      ...createBaseEvent(sessionId),
-      text: assistantText,
-    });
-    events.emit("speech.stopped", {
-      ...createBaseEvent(sessionId),
-      role: "assistant",
-    });
-    if (signal?.aborted) {
-      recoverFromAbort(ctx);
+    if (spokeAny) {
+      finishSpeech(ctx, events, assistantText, signal);
     } else {
       ctx.sessionManager.tryTransition("listening");
     }
+    return;
+  }
+
+  const last = ctx.messages[ctx.messages.length - 1];
+  const alreadyStoredAssistant =
+    last?.role === "assistant" &&
+    last.content === assistantText &&
+    !last.toolCalls;
+  if (!alreadyStoredAssistant) {
+    ctx.messages.push({ role: "assistant", content: assistantText });
+  }
+
+  // Non-streaming path: speak full text once
+  if (!streaming && !spokeAny) {
+    await speakSegment(ctx, events, assistantText, {
+      first: true,
+      fullTextHint: assistantText,
+    });
+    spokeAny = true;
+  }
+
+  if (spokeAny) {
+    finishSpeech(ctx, events, assistantText, signal);
+  } else {
+    ctx.sessionManager.tryTransition("listening");
+  }
+}
+
+async function speakSegment(
+  ctx: InternalVoiceContext,
+  events: TypedEmitter<EventMap>,
+  text: string,
+  opts: { first: boolean; fullTextHint: string },
+): Promise<boolean> {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const sessionId = ctx.sessionManager.id;
+  const signal = ctx.abortController?.signal;
+  if (signal?.aborted) return false;
+
+  if (opts.first) {
+    ctx.sessionManager.tryTransition("speaking");
+    events.emit("tts.started", {
+      ...createBaseEvent(sessionId),
+      text: opts.fullTextHint || trimmed,
+    });
+    events.emit("speech.started", {
+      ...createBaseEvent(sessionId),
+      role: "assistant",
+    });
+  }
+
+  try {
+    for await (const audio of ctx.tts.speak(trimmed, { signal })) {
+      if (signal?.aborted) break;
+      ctx.transport.send(audio);
+    }
+  } catch (err) {
+    if (signal?.aborted || isAbortError(err)) return true;
+    throw err;
+  }
+  return true;
+}
+
+function finishSpeech(
+  ctx: InternalVoiceContext,
+  events: TypedEmitter<EventMap>,
+  assistantText: string,
+  signal?: AbortSignal,
+): void {
+  const sessionId = ctx.sessionManager.id;
+  events.emit("tts.completed", {
+    ...createBaseEvent(sessionId),
+    text: assistantText,
+  });
+  events.emit("speech.stopped", {
+    ...createBaseEvent(sessionId),
+    role: "assistant",
+  });
+  if (signal?.aborted) {
+    recoverFromAbort(ctx);
+  } else {
+    ctx.sessionManager.tryTransition("listening");
   }
 }
 
@@ -175,12 +314,12 @@ function isAbortError(err: unknown): boolean {
 async function handleChunk(
   chunk: LLMChunk,
   handlers: {
-    onText: (text: string) => void;
+    onText: (text: string) => void | Promise<void>;
     onToolCall: (tc: ToolCall) => void;
   },
 ): Promise<void> {
   if (chunk.type === "text" && chunk.text) {
-    handlers.onText(chunk.text);
+    await handlers.onText(chunk.text);
   } else if (chunk.type === "tool_call" && chunk.toolCall) {
     handlers.onToolCall(chunk.toolCall);
   }
