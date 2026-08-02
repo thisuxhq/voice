@@ -183,6 +183,7 @@ voice.use(async (voice, next) => {
 | [docs/observability.md](docs/observability.md) | Metrics / logging |
 | [docs/phases/phase-1.md](docs/phases/phase-1.md) | ✅ Core loop |
 | [docs/phases/phase-2.md](docs/phases/phase-2.md) | ✅ Telephony + observability |
+| [docs/phases/phase-2.5.md](docs/phases/phase-2.5.md) | 🔄 Duplex + latency (barge-in, streamed TTS, policies) |
 | [docs/phases/phase-3.md](docs/phases/phase-3.md) | Video / avatars / multi-agent |
 | [docs/repository.md](docs/repository.md) | Monorepo layout |
 

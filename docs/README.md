@@ -31,6 +31,7 @@ TypeScript-first framework for real-time voice agents.
 | ----- | --- | ----- |
 | **1** | [Phase 1](./phases/phase-1.md) | ✅ WebRTC, OpenAI STT, Groq, Cartesia, events, tools |
 | **2** | [Phase 2](./phases/phase-2.md) | ✅ ElevenLabs, Twilio, SIP, metrics, logging |
+| **2.5** | [Phase 2.5](./phases/phase-2.5.md) | 🔄 Audio barge-in, streamed TTS, policies, parallel tools, reconnect |
 | **3** | [Phase 3](./phases/phase-3.md) | Video, avatars, multi-agent workflows |
 
 ## Quick links
