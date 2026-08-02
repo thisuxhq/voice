@@ -26,10 +26,26 @@ export async function runTurn(
   userText: string,
 ): Promise<void> {
   const sessionId = ctx.sessionManager.id;
-  const signal = ctx.abortController?.signal;
+  let signal = ctx.abortController?.signal;
   const streaming = ctx.ttsStreaming.enabled;
   // Live first-pass speech only when the agent has no tools (no tool_call risk).
   const liveFirstPass = streaming && ctx.tools.size === 0;
+
+  // Optional whole-turn wall clock
+  let turnTimer: ReturnType<typeof setTimeout> | null = null;
+  const maxTurn = ctx.policies.maxTurnMs;
+  if (maxTurn != null && maxTurn > 0 && ctx.abortController) {
+    turnTimer = setTimeout(() => {
+      ctx.abortController?.abort();
+      ctx.tts.abort?.();
+    }, maxTurn);
+  }
+  const clearTurnTimer = () => {
+    if (turnTimer) {
+      clearTimeout(turnTimer);
+      turnTimer = null;
+    }
+  };
 
   ctx.messages.push({ role: "user", content: userText });
   ctx.sessionManager.tryTransition("thinking");
@@ -77,9 +93,11 @@ export async function runTurn(
     }
   } catch (err) {
     if (signal?.aborted || isAbortError(err)) {
+      clearTurnTimer();
       recoverFromAbort(ctx);
       return;
     }
+    clearTurnTimer();
     throw err;
   }
 
@@ -104,6 +122,7 @@ export async function runTurn(
   });
 
   if (signal?.aborted) {
+    clearTurnTimer();
     recoverFromAbort(ctx);
     return;
   }
@@ -237,6 +256,7 @@ export async function runTurn(
   } else {
     ctx.sessionManager.tryTransition("listening");
   }
+  clearTurnTimer();
 }
 
 async function speakSegment(
@@ -374,10 +394,29 @@ async function executeTool(
           });
         }
       }
-      output = await def.execute(input, {
+      const toolTimeout = ctx.policies.toolTimeoutMs;
+      const exec = def.execute(input, {
         sessionId,
         signal: abort.signal,
       });
+      if (toolTimeout != null && toolTimeout > 0) {
+        output = await Promise.race([
+          Promise.resolve(exec),
+          new Promise<never>((_, reject) => {
+            const t = setTimeout(() => {
+              abort.abort();
+              reject(new Error(`Tool timed out after ${toolTimeout}ms`));
+            }, toolTimeout);
+            abort.signal.addEventListener(
+              "abort",
+              () => clearTimeout(t),
+              { once: true },
+            );
+          }),
+        ]);
+      } else {
+        output = await exec;
+      }
     } catch (err) {
       error = err instanceof Error ? err : new Error(String(err));
       output = { error: error.message };

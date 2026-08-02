@@ -24,6 +24,7 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
   const bargeIn = resolveBargeIn(options.bargeIn);
   const bargeDetector = createBargeInDetector(bargeIn);
   const ttsStreaming = resolveTtsStreaming(options.ttsStreaming);
+  const policies = resolvePolicies(options.policies);
 
   const ctx: InternalVoiceContext = {
     sessionManager,
@@ -36,6 +37,8 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
     systemPrompt: options.systemPrompt ?? "You are a helpful voice assistant.",
     abortController: null,
     ttsStreaming,
+    policies,
+    maxToolRounds: options.maxToolRounds ?? 3,
   };
 
   if (ctx.systemPrompt) {
@@ -46,6 +49,36 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
   let unsubAudio: (() => void) | undefined;
   let unsubTranscript: (() => void) | undefined;
   let unsubState: (() => void) | undefined;
+  let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  let silenceFired = false;
+
+  function clearSilenceTimer() {
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+  }
+
+  function armSilenceTimer() {
+    clearSilenceTimer();
+    const ms = policies.silenceTimeoutMs;
+    if (ms == null || ms <= 0 || !connected) return;
+    if (sessionManager.state !== "listening") return;
+    silenceTimer = setTimeout(() => {
+      silenceTimer = null;
+      if (!connected || sessionManager.state !== "listening") return;
+      events.emit("session.idle", {
+        ...createBaseEvent(sessionManager.id),
+        state: sessionManager.state,
+      });
+      if (!silenceFired && policies.silencePrompt.trim()) {
+        silenceFired = true;
+        void handleFinalTranscript(policies.silencePrompt, {
+          emitTranscript: true,
+        });
+      }
+    }, ms);
+  }
 
   const agent: VoiceAgent = {
     get session() {
@@ -78,9 +111,9 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
         await ctx.transport.connect();
         await ctx.stt.connect();
 
-        // Arm / disarm barge-in when session enters interruptible states.
-        if (bargeIn.enabled) {
-          unsubState = sessionManager.onTransition((_from, to) => {
+        // Arm / disarm barge-in + silence timer on state changes.
+        unsubState = sessionManager.onTransition((_from, to) => {
+          if (bargeIn.enabled) {
             if (to === "speaking" || to === "thinking") {
               bargeDetector.arm();
             } else if (
@@ -91,8 +124,16 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
             ) {
               bargeDetector.disarm();
             }
-          });
-        }
+          }
+          if (to === "listening") {
+            armSilenceTimer();
+          } else {
+            clearSilenceTimer();
+            if (to === "thinking" || to === "speaking") {
+              silenceFired = false;
+            }
+          }
+        });
 
         // Audio from transport → STT (+ optional energy barge-in)
         if (ctx.transport.onAudio) {
@@ -138,6 +179,7 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
         sessionManager.transition("connected");
         sessionManager.tryTransition("listening");
         connected = true;
+        armSilenceTimer();
 
         events.emit("connected", {
           ...createBaseEvent(sessionManager.id),
@@ -165,6 +207,7 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
       unsubAudio = undefined;
       unsubTranscript = undefined;
       unsubState = undefined;
+      clearSilenceTimer();
       bargeDetector.disarm();
 
       try {
@@ -294,5 +337,18 @@ function resolveTtsStreaming(
   return {
     enabled: opts.enabled !== false,
     maxBufferChars: opts.maxBufferChars ?? 180,
+  };
+}
+
+function resolvePolicies(
+  input?: import("./types.js").SessionPolicies,
+): import("./types.js").ResolvedPolicies {
+  return {
+    silenceTimeoutMs:
+      input?.silenceTimeoutMs === undefined ? null : input.silenceTimeoutMs,
+    silencePrompt: input?.silencePrompt ?? "Are you still there?",
+    toolTimeoutMs:
+      input?.toolTimeoutMs === undefined ? 15_000 : input.toolTimeoutMs,
+    maxTurnMs: input?.maxTurnMs === undefined ? null : input.maxTurnMs,
   };
 }

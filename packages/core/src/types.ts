@@ -88,6 +88,21 @@ export interface TtsStreamingOptions {
   maxBufferChars?: number;
 }
 
+export interface SessionPolicies {
+  /**
+   * While listening, if no final user turn for N ms, emit `session.idle`
+   * and optionally inject `silencePrompt` as a user turn once.
+   * Default: off (`null`).
+   */
+  silenceTimeoutMs?: number | null;
+  /** Text injected on silence timeout. Default "Are you still there?" */
+  silencePrompt?: string;
+  /** Race each tool execute vs this timeout (ms). Default 15000. `null` = off. */
+  toolTimeoutMs?: number | null;
+  /** Abort the whole turn after N ms. Default off (`null`). */
+  maxTurnMs?: number | null;
+}
+
 export interface CreateVoiceOptions {
   transport: TransportProvider;
   stt: STTProvider;
@@ -106,6 +121,10 @@ export interface CreateVoiceOptions {
    * Pass `false` to wait for the full assistant string. Default true.
    */
   ttsStreaming?: boolean | TtsStreamingOptions;
+  /** Silence / tool / turn timeouts. */
+  policies?: SessionPolicies;
+  /** Max tool rounds per user turn. Default 3 (applied in parallel-tools layer). */
+  maxToolRounds?: number;
 }
 
 export type Middleware = (
@@ -138,6 +157,13 @@ export interface ResolvedTtsStreaming {
   maxBufferChars: number;
 }
 
+export interface ResolvedPolicies {
+  silenceTimeoutMs: number | null;
+  silencePrompt: string;
+  toolTimeoutMs: number | null;
+  maxTurnMs: number | null;
+}
+
 export interface InternalVoiceContext {
   sessionManager: SessionManager;
   transport: TransportProvider;
@@ -149,4 +175,6 @@ export interface InternalVoiceContext {
   systemPrompt: string;
   abortController: AbortController | null;
   ttsStreaming: ResolvedTtsStreaming;
+  policies: ResolvedPolicies;
+  maxToolRounds: number;
 }

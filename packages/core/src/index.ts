@@ -11,6 +11,7 @@ export type {
   CreateVoiceOptions,
   BargeInOptions,
   TtsStreamingOptions,
+  SessionPolicies,
   VoiceAgent,
   Middleware,
   ToolDefinition,
