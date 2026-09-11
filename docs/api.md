@@ -15,20 +15,30 @@ const voice = createVoice({
   llm: groq(),
   tts: cartesia(),
   // Phase 2.5 — optional
-  bargeIn: true, // energy barge-in while speaking (default on)
+  bargeIn: true, // energy gate while speaking (default on)
+  duplex: true, // listen while speaking; adapt on overlap (default)
 });
 ```
+
+### Duplex options
+
+| Option | Default | Meaning |
+| ------ | ------- | ------- |
+| `duplex: false` | — | Classic barge-in: overlap → `interrupted` → `listening` |
+| `listenWhileSpeaking` | `true` | Keep inbound PCM flowing to STT during TTS |
+| `onOverlap` | `"adapt"` | `"adapt"` continues thinking→speaking; `"interrupt"` hops to listening |
+| `overlapTimeoutMs` | `4000` | After energy abort with no final transcript, return to listening |
+
+Manual hard stop: `await voice.interrupt()` — see [interruptions.md](./interruptions.md).
 
 ### Barge-in options
 
 | Option | Default | Meaning |
 | ------ | ------- | ------- |
-| `bargeIn: false` | — | Disable audio-driven interrupt |
+| `bargeIn: false` | — | Disable energy-driven outbound cancel |
 | `energyThreshold` | `0.025` | RMS 0–1 on s16le PCM |
 | `minFrames` | `3` | Consecutive hot chunks before interrupt |
 | `graceMs` | `250` | Ignore mic energy right after speech starts |
-
-Manual: `await voice.interrupt()` — see [interruptions.md](./interruptions.md).
 
 ### TTS streaming options
 

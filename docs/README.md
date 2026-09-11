@@ -18,7 +18,7 @@ TypeScript-first framework for real-time voice agents.
 | [Events](./events.md) | Event-driven contract |
 | [Audio pipeline](./audio-pipeline.md) | Mic → VAD → encode → provider |
 | [Tools](./tools.md) | Tool registration and execution pipeline |
-| [Interruptions](./interruptions.md) | Barge-in requirements and behavior |
+| [Interruptions](./interruptions.md) | Full duplex, barge-in, and hard interrupt |
 | [Observability](./observability.md) | Latency, tokens, failures, retries |
 | [Infrastructure](./infrastructure.md) | Cloudflare, DB, cache targets |
 | [Edge cases](./edge-cases.md) | Failure modes and mitigations |
@@ -31,7 +31,7 @@ TypeScript-first framework for real-time voice agents.
 | ----- | --- | ----- |
 | **1** | [Phase 1](./phases/phase-1.md) | ✅ WebRTC, OpenAI STT, Groq, Cartesia, events, tools |
 | **2** | [Phase 2](./phases/phase-2.md) | ✅ ElevenLabs, Twilio, SIP, metrics, logging |
-| **2.5** | [Phase 2.5](./phases/phase-2.5.md) | 🔄 Audio barge-in, streamed TTS, policies, parallel tools, reconnect |
+| **2.5** | [Phase 2.5](./phases/phase-2.5.md) | 🔄 Full duplex, streamed TTS, policies, parallel tools, reconnect |
 | **3** | [Phase 3](./phases/phase-3.md) | Video, avatars, multi-agent workflows |
 
 ## Quick links

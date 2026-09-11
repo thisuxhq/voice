@@ -27,6 +27,14 @@ describe("StateMachine", () => {
     }
   });
 
+  test("duplex adapt path: speaking → thinking → speaking", () => {
+    const m = createStateMachine("speaking");
+    m.transition("thinking");
+    expect(m.state).toBe("thinking");
+    m.transition("speaking");
+    expect(m.state).toBe("speaking");
+  });
+
   test("interrupt path: speaking → interrupted → listening", () => {
     const m = createStateMachine("speaking");
     m.transition("interrupted");

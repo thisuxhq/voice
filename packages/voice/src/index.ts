@@ -42,6 +42,7 @@ export type {
   SafetyMiddlewareOptions,
   SessionPolicies,
   BargeInOptions,
+  DuplexOptions,
   TtsStreamingOptions,
 } from "@thisux/voice-core";
 

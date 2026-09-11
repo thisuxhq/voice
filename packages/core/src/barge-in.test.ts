@@ -74,6 +74,8 @@ describe("createVoice audio barge-in", () => {
       stt,
       llm,
       tts,
+      // Classic half-duplex barge-in (stop → listening).
+      duplex: { onOverlap: "interrupt" },
       bargeIn: { graceMs: 0, minFrames: 2, energyThreshold: 0.02 },
     });
 

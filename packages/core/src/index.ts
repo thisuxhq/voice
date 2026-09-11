@@ -6,6 +6,12 @@ export {
   createBargeInDetector,
 } from "./barge-in.js";
 export type { ResolvedBargeIn } from "./barge-in.js";
+export { resolveDuplex, appendSpoken } from "./duplex.js";
+export type {
+  DuplexOptions,
+  DuplexOverlapMode,
+  ResolvedDuplex,
+} from "./duplex.js";
 export { createSentenceFlusher } from "./sentence-flush.js";
 export { memory, createInMemoryStore } from "./middleware/memory.js";
 export type {
@@ -43,6 +49,8 @@ export type {
   ToolEvent,
   SessionEvent,
   ErrorEvent,
+  BargeInEvent,
+  DuplexOverlapEvent,
 } from "@thisux/voice-events";
 
 export type { Session, SessionState } from "@thisux/voice-session";

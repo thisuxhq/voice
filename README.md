@@ -47,7 +47,7 @@ Same DX category as **Resend** (email), **UploadThing** (files), **Unstorage** (
 | - | - |
 | **Provider swap** | OpenAI · Groq · Cartesia · ElevenLabs behind stable interfaces |
 | **Transports** | WebRTC · WebSocket · SIP · Twilio Media Streams |
-| **Agent loop** | Audio → STT → LLM → tools → TTS, with barge-in |
+| **Agent loop** | Audio → STT → LLM → tools → TTS, full duplex + streamed TTS |
 | **Events** | Typed lifecycle: `transcript.*`, `llm.*`, `tool.*`, `tts.*` |
 | **Middleware** | `voice.use(logger())`, `voice.use(metrics())` |
 | **Edge-safe core** | No Node-only APIs required in `@thisux/voice-core` |
@@ -165,7 +165,7 @@ Coding agents: start at [AGENTS.md](./AGENTS.md).
 | [Events](./docs/events.md) | Full event catalog |
 | [Session](./docs/session.md) | State machine |
 | [Tools](./docs/tools.md) | Tool pipeline |
-| [Interruptions](./docs/interruptions.md) | Barge-in |
+| [Interruptions](./docs/interruptions.md) | Full duplex + barge-in |
 | [Providers](./docs/providers.md) | Matrix + interfaces |
 | [Phase 1](./docs/phases/phase-1.md) · [2](./docs/phases/phase-2.md) · [3](./docs/phases/phase-3.md) | Roadmap detail |
 
@@ -177,7 +177,7 @@ Full index: [docs/README.md](./docs/README.md).
 
 1. **Phase 1** — ✅ Core loop, WebRTC, OpenAI STT, Groq, Cartesia, events, tools  
 2. **Phase 2** — ✅ ElevenLabs, Twilio, SIP, WebSocket, logger/metrics  
-3. **Phase 2.5** — 🔄 Audio barge-in, streamed TTS, session policies, parallel tools, reconnect ([doc](./docs/phases/phase-2.5.md))  
+3. **Phase 2.5** — 🔄 Full duplex, streamed TTS, session policies, parallel tools, reconnect ([doc](./docs/phases/phase-2.5.md))  
 4. **Phase 3** — Video, avatars, multi-agent workflows  
 
 Not goals: training models, owning a telephony network, or a proprietary foundation model.

@@ -13,7 +13,11 @@ export interface EventMap {
   // Speech
   "speech.started": SpeechEvent;
   "speech.stopped": SpeechEvent;
+  "speech.barge_in": BargeInEvent;
   speech: SpeechEvent;
+
+  // Full duplex
+  "duplex.overlap": DuplexOverlapEvent;
 
   // Transcript
   "transcript.partial": TranscriptEvent;
@@ -51,6 +55,18 @@ export interface ErrorEvent extends BaseEvent {
 
 export interface SpeechEvent extends BaseEvent {
   role: "user" | "assistant";
+}
+
+export interface BargeInEvent extends SpeechEvent {
+  /** How the session will treat this barge-in. */
+  mode: "adapt" | "interrupt";
+}
+
+export interface DuplexOverlapEvent extends BaseEvent {
+  /** Overlapping user transcript that the agent will adapt to. */
+  text: string;
+  /** Assistant speech already played in this turn, if any. */
+  spoken?: string;
 }
 
 export interface TranscriptEvent extends BaseEvent {

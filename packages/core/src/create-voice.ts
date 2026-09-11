@@ -7,12 +7,14 @@ import {
 } from "@thisux/voice-events";
 import { createSession } from "@thisux/voice-session";
 import { createBargeInDetector, resolveBargeIn } from "./barge-in.js";
+import { resolveDuplex } from "./duplex.js";
 import { attachMessageAccessors } from "./middleware/memory.js";
 import { attachToolWrapper } from "./middleware/safety.js";
 import { runTurn } from "./pipeline.js";
 import type {
   CreateVoiceOptions,
   InternalVoiceContext,
+  Message,
   Middleware,
   ToolDefinition,
   VoiceAgent,
@@ -25,6 +27,7 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
   const middlewares: Middleware[] = [];
   const bargeIn = resolveBargeIn(options.bargeIn);
   const bargeDetector = createBargeInDetector(bargeIn);
+  const duplex = resolveDuplex(options.duplex);
   const ttsStreaming = resolveTtsStreaming(options.ttsStreaming);
   const policies = resolvePolicies(options.policies);
 
@@ -41,6 +44,9 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
     ttsStreaming,
     policies,
     maxToolRounds: options.maxToolRounds ?? 3,
+    duplex,
+    adapting: false,
+    spokenAssistantText: "",
   };
 
   if (ctx.systemPrompt) {
@@ -55,12 +61,63 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
   let silenceTimer: ReturnType<typeof setTimeout> | null = null;
   let silenceFired = false;
   let reconnecting = false;
+  let overlapTimer: ReturnType<typeof setTimeout> | null = null;
+  let overlapGen = 0;
+  let inflight: Promise<void> | null = null;
+  let turnGen = 0;
 
   function clearSilenceTimer() {
     if (silenceTimer) {
       clearTimeout(silenceTimer);
       silenceTimer = null;
     }
+  }
+
+  function clearOverlapTimer() {
+    if (overlapTimer) {
+      clearTimeout(overlapTimer);
+      overlapTimer = null;
+    }
+    overlapGen += 1;
+  }
+
+  function armOverlapTimer() {
+    clearOverlapTimer();
+    const ms = duplex.overlapTimeoutMs;
+    if (ms == null || ms <= 0) return;
+    const gen = overlapGen;
+    overlapTimer = setTimeout(() => {
+      overlapTimer = null;
+      if (gen !== overlapGen) return;
+      if (!ctx.adapting) return;
+      ctx.adapting = false;
+      sessionManager.tryTransition("listening");
+    }, ms);
+  }
+
+  function persistSpokenAssistant() {
+    const spoken = ctx.spokenAssistantText.trim();
+    if (!spoken) return;
+    const last = ctx.messages[ctx.messages.length - 1];
+    if (last?.role === "assistant") {
+      if (last.content === spoken) return;
+      if (spoken.startsWith(last.content) || last.content.startsWith(spoken)) {
+        last.content = spoken.length > last.content.length ? spoken : last.content;
+        return;
+      }
+      return;
+    }
+    const msg: Message = { role: "assistant", content: spoken };
+    ctx.messages.push(msg);
+  }
+
+  function midTurn(): boolean {
+    const state = sessionManager.state;
+    return (
+      state === "speaking" ||
+      state === "thinking" ||
+      ctx.adapting
+    );
   }
 
   function armSilenceTimer() {
@@ -139,17 +196,33 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
           }
         });
 
-        // Audio from transport → STT (+ optional energy barge-in)
+        // Audio from transport → STT (stays live while speaking) + energy barge-in
         if (ctx.transport.onAudio) {
           const off = ctx.transport.onAudio((chunk) => {
-            ctx.stt.transcribe(chunk);
+            const speaking =
+              sessionManager.state === "speaking" ||
+              sessionManager.state === "thinking";
+            if (!speaking || duplex.listenWhileSpeaking) {
+              ctx.stt.transcribe(chunk);
+            }
             if (
               bargeIn.enabled &&
               bargeDetector.push(chunk) &&
-              (sessionManager.state === "speaking" ||
-                sessionManager.state === "thinking")
+              speaking
             ) {
-              void agent.interrupt();
+              events.emit("speech.barge_in", {
+                ...createBaseEvent(sessionManager.id),
+                role: "user",
+                mode: duplex.onOverlap,
+              });
+              if (duplex.onOverlap === "adapt") {
+                ctx.adapting = true;
+                ctx.abortController?.abort();
+                ctx.tts.abort?.();
+                armOverlapTimer();
+              } else {
+                void agent.interrupt();
+              }
             }
           });
           if (typeof off === "function") unsubAudio = off;
@@ -263,7 +336,10 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
       unsubState = undefined;
       unsubConn = undefined;
       clearSilenceTimer();
+      clearOverlapTimer();
       reconnecting = false;
+      ctx.adapting = false;
+      ctx.spokenAssistantText = "";
       bargeDetector.disarm();
 
       try {
@@ -292,7 +368,9 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
     },
 
     async interrupt() {
-      // Abort in-flight LLM / tools / TTS; keep session id stable.
+      // Hard stop: abort outbound and return to listening.
+      ctx.adapting = false;
+      clearOverlapTimer();
       ctx.abortController?.abort();
       ctx.tts.abort?.();
 
@@ -320,16 +398,46 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
     const trimmed = text.trim();
     if (!trimmed) return;
 
-    // Barge-in: cancel current turn
-    if (
-      sessionManager.state === "speaking" ||
-      sessionManager.state === "thinking"
-    ) {
-      await agent.interrupt();
+    const gen = ++turnGen;
+    const overlapping = midTurn();
+
+    if (overlapping) {
+      if (duplex.onOverlap === "adapt") {
+        persistSpokenAssistant();
+        ctx.adapting = true;
+        clearOverlapTimer();
+        ctx.abortController?.abort();
+        ctx.tts.abort?.();
+        events.emit("duplex.overlap", {
+          ...createBaseEvent(sessionManager.id),
+          text: trimmed,
+          spoken: ctx.spokenAssistantText.trim() || undefined,
+        });
+        events.emit("speech.stopped", {
+          ...createBaseEvent(sessionManager.id),
+          role: "assistant",
+        });
+      } else {
+        await agent.interrupt();
+      }
     }
+
+    if (inflight) {
+      try {
+        await inflight;
+      } catch {
+        /* prior turn abort is expected */
+      }
+    }
+    if (gen !== turnGen) return;
 
     // Fresh controller for this turn (interrupt only aborts; does not replace).
     ctx.abortController = new AbortController();
+    ctx.adapting = false;
+    ctx.spokenAssistantText = "";
+    if (overlapping && duplex.onOverlap === "adapt") {
+      sessionManager.tryTransition("thinking");
+    }
 
     try {
       if (opts?.emitTranscript !== false) {
@@ -351,7 +459,9 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
         role: "user",
       });
 
-      await runTurn(ctx, events, trimmed);
+      const turn = runTurn(ctx, events, trimmed);
+      inflight = turn;
+      await turn;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       events.emit("error", {
@@ -360,6 +470,10 @@ export function createVoice(options: CreateVoiceOptions): VoiceAgent {
         fatal: false,
       });
       sessionManager.tryTransition("listening");
+    } finally {
+      if (inflight && gen === turnGen) {
+        inflight = null;
+      }
     }
   }
 

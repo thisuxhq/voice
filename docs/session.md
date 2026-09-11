@@ -31,6 +31,7 @@ closed
 ```text
 idle → connecting → connected → listening
 listening → thinking → speaking → listening
+speaking → thinking → speaking   (duplex adapt — no listening hop)
 speaking → interrupted → listening
 * → reconnecting → connected | failed
 * → closed
@@ -43,6 +44,7 @@ speaking → interrupted → listening
 2. Invalid transitions throw or emit `error` (never silent).
 3. `interrupted` always preserves conversation context.
 4. `reconnecting` keeps session `id` stable.
+5. Full-duplex adapt uses `speaking → thinking` (already a legal transition) instead of `interrupted`.
 
 ## Policies (Phase 2.5)
 
@@ -62,5 +64,17 @@ createVoice({
 | `silenceTimeoutMs` | off | While `listening`, fire `session.idle` and one silence prompt |
 | `toolTimeoutMs` | `15000` | Tool error payload; turn continues |
 | `maxTurnMs` | off | Abort in-flight turn |
+
+### Duplex
+
+```ts
+createVoice({
+  duplex: {
+    listenWhileSpeaking: true, // inbound STT stays live during TTS
+    onOverlap: "adapt",        // default — no listening hop
+    overlapTimeoutMs: 4_000,
+  },
+});
+```
 
 Implementation: `@thisux/voice-session` + `@thisux/voice-state-machine`.
