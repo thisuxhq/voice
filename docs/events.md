@@ -19,7 +19,9 @@ Everything is event-based. Consumers subscribe with `voice.on(name, handler)`.
 | ----- | ---- |
 | `speech.started` | User or agent speech begins |
 | `speech.stopped` | Speech ends |
+| `speech.barge_in` | Energy gate fired while thinking/speaking (Phase 2.5) |
 | `speech` | Generic speech lifecycle (alias surface) |
+| `duplex.overlap` | Overlapping final transcript; agent will adapt (Phase 2.5) |
 
 ### Transcript
 

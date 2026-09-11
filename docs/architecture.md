@@ -45,7 +45,7 @@ Microphone
   → speaker
 ```
 
-Interruptions short-circuit TTS and in-flight tools; session state is preserved. See [interruptions.md](./interruptions.md).
+Interruptions short-circuit remaining TTS and in-flight tools; session state is preserved. Default duplex **adapts** mid-turn (`speaking → thinking`) instead of restarting from `listening`. See [interruptions.md](./interruptions.md).
 
 ## Package map
 

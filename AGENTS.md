@@ -117,7 +117,7 @@ App → createVoice → session + state machine
 | **Interfaces** | `STTProvider`, `LLMProvider`, `TTSProvider`, `TransportProvider` in `core` |
 | **Pipeline** | `runTurn` — one user utterance through tools/TTS |
 | **Session** | `idle → connecting → connected → listening → thinking → speaking → … → closed` |
-| **Interrupt** | AbortSignal + `tts.abort()` + state → `interrupted` → `listening` |
+| **Interrupt** | AbortSignal + `tts.abort()`; duplex **adapt** (`speaking → thinking`) or hard `interrupted` → `listening` |
 
 Details: [docs/architecture.md](docs/architecture.md), [docs/api.md](docs/api.md), [docs/events.md](docs/events.md).
 

@@ -7,7 +7,7 @@
 | Network failure | Reconnection (`reconnecting` state) |
 | Slow providers | Timeout handling |
 | Hallucinations | Validation of tool args / structured outputs |
-| Interruptions | State machine + abort paths |
+| Interruptions | State machine + abort paths; duplex adapt vs interrupt |
 | Context overflow | Summaries / sliding window |
 | Provider failure | Failover / retries |
 

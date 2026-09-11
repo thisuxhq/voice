@@ -35,3 +35,8 @@ Provider (STT)
 - Prefer streaming chunks over full-utterance buffers for low latency.
 - VAD thresholds and silence timeouts are configurable per session.
 - Encoding format is negotiated by the STT adapter.
+- **Full duplex (Phase 2.5):** inbound chunks keep flowing to STT while TTS is playing. Core does not mute the mic for a half-duplex turn. Overlap is handled by the duplex policy ([interruptions.md](./interruptions.md)) — adapt in place, or classic barge-in.
+
+## Echo
+
+The energy barge-in `graceMs` window is a cheap echo guard, not AEC. Production AEC/RNNoise stays in the transport or app.

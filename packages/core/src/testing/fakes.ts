@@ -68,17 +68,23 @@ export function createFakeTransport(): FakeTransport {
 
 export interface FakeSTT extends STTProvider {
   readonly connected: boolean;
+  /** Audio chunks received via `transcribe` (duplex: mic stays live). */
+  readonly transcribed: Uint8Array[];
   /** Emit a transcript as if the STT engine produced it. */
   emitTranscript(text: string, isFinal?: boolean): void;
 }
 
 export function createFakeSTT(): FakeSTT {
   let connected = false;
+  const transcribed: Uint8Array[] = [];
   const handlers = new Set<(e: { text: string; isFinal: boolean }) => void>();
 
   return {
     get connected() {
       return connected;
+    },
+    get transcribed() {
+      return transcribed;
     },
     async connect() {
       connected = true;
@@ -87,8 +93,8 @@ export function createFakeSTT(): FakeSTT {
       connected = false;
       handlers.clear();
     },
-    transcribe(_audio: Uint8Array) {
-      // Tests usually call emitTranscript directly; audio path is a no-op.
+    transcribe(audio: Uint8Array) {
+      transcribed.push(audio);
     },
     onTranscript(handler) {
       handlers.add(handler);

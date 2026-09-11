@@ -3,6 +3,7 @@ import {
   type TypedEmitter,
   type EventMap,
 } from "@thisux/voice-events";
+import { appendSpoken } from "./duplex.js";
 import { createSentenceFlusher } from "./sentence-flush.js";
 import type {
   InternalVoiceContext,
@@ -343,6 +344,8 @@ async function speakSegment(
     });
   }
 
+  ctx.spokenAssistantText = appendSpoken(ctx.spokenAssistantText, trimmed);
+
   try {
     for await (const audio of ctx.tts.speak(trimmed, { signal })) {
       if (signal?.aborted) break;
@@ -378,6 +381,8 @@ function finishSpeech(
 }
 
 function recoverFromAbort(ctx: InternalVoiceContext): void {
+  // Full duplex: outbound was cancelled so we can adapt; stay mid-turn.
+  if (ctx.adapting) return;
   ctx.sessionManager.tryTransition("interrupted");
   ctx.sessionManager.tryTransition("listening");
 }

@@ -21,7 +21,7 @@ Phases 1–2 delivered:
 
 What still feels half-duplex / high-latency:
 
-1. Barge-in is API-driven, not audio-driven while the agent is speaking.
+1. Barge-in is API-driven, not audio-driven while the agent is speaking — and a barge-in still did a full stop-then-listen restart.
 2. TTS waits for the full assistant string before speaking.
 3. No session-level silence / turn / tool timeout policies.
 4. Tools run sequentially, single round.
@@ -47,7 +47,7 @@ Core stays **edge-safe** and **provider-independent**. Heavy audio DSP stays in 
 ```text
 main
  └── phase-2.5/plan              # this doc + docs index
-  └── phase-2.5/audio-barge-in   # energy VAD → interrupt while speaking
+  └── phase-2.5/audio-barge-in   # energy VAD + full-duplex adapt
    └── phase-2.5/streamed-tts    # LLM token → sentence flush → TTS
     └── phase-2.5/session-policies
      └── phase-2.5/parallel-tools
@@ -66,17 +66,30 @@ Each layer is independently reviewable and keeps `bun run build && bun run test`
 - [x] `docs/phases/phase-2.5.md`
 - [x] Link from `docs/README.md`, root `README.md` roadmap, `AGENTS.md`
 
-### 2. Audio barge-in
+### 2. Audio barge-in + full duplex
 
-**User value:** User talks over the agent → speech stops immediately.
+**User value:** User talks over the agent → the agent *hears* it, stops remaining playback, and adjusts without a listening restart.
 
 | Piece | Design |
 | ----- | ------ |
-| API | `createVoice({ bargeIn?: boolean \| BargeInOptions })` default `true` |
-| Detection | Lightweight PCM energy gate on inbound `transport.onAudio` while state is `speaking` or `thinking` |
-| Action | Call existing `interrupt()` once threshold sustained |
-| Opt-out | `bargeIn: false` for push-to-talk / telephony that handles barge-in upstream |
-| Events | Existing `speech.stopped` (assistant); optional `speech.barge_in` later if needed |
+| Streams | Inbound `transport.onAudio` stays wired to `stt.transcribe` while thinking/speaking (`duplex.listenWhileSpeaking`, default on) |
+| API | `createVoice({ duplex?: boolean \| DuplexOptions, bargeIn?: boolean \| BargeInOptions })` |
+| Overlap | Default `onOverlap: "adapt"` — persist spoken text, abort leftover TTS/LLM, `speaking → thinking → speaking` |
+| Detection | Lightweight PCM energy gate on inbound audio while `speaking` / `thinking` (courtesy stop so we don’t talk over the user) |
+| Interrupt | `onOverlap: "interrupt"` or `duplex: false` or `voice.interrupt()` → `interrupted` → `listening` |
+| Opt-out | `bargeIn: false` to disable the energy gate; `listenWhileSpeaking: false` for push-to-talk capture |
+| Events | `speech.barge_in`, `duplex.overlap`, existing `speech.stopped` |
+
+```ts
+interface DuplexOptions {
+  /** Keep inbound PCM → STT during TTS. Default true */
+  listenWhileSpeaking?: boolean;
+  /** `"adapt"` (default) or `"interrupt"` */
+  onOverlap?: "adapt" | "interrupt";
+  /** Energy abort with no final transcript → listening. Default 4000 */
+  overlapTimeoutMs?: number | null;
+}
+```
 
 ```ts
 interface BargeInOptions {
@@ -91,7 +104,10 @@ interface BargeInOptions {
 }
 ```
 
-**Tests:** fake transport pushes loud PCM while TTS is streaming → `tts.abort` + state `listening`.
+**Tests:**
+- Fake transport pushes loud PCM while TTS is streaming → `tts.abort`; adapt mode does not visit `listening` before the overlapping transcript.
+- STT final mid-TTS → `duplex.overlap`, second LLM pass sees spoken + overlap text, no listening hop.
+- `duplex: false` still does `interrupted` → `listening`.
 
 **Out of scope here:** full AEC, WebRTC `getUserMedia` wiring (playground can follow).
 
@@ -177,14 +193,15 @@ Prefer implementing as **middleware factories** in `@thisux/voice-core` or a tin
 
 ## Acceptance criteria (phase)
 
-1. User audio energy during `speaking` interrupts TTS without calling `interrupt()` manually.
-2. Multi-sentence LLM output begins playback before the full completion when streaming TTS is on.
-3. Configurable silence + tool timeouts behave as documented offline.
-4. Multiple tools in one round run in parallel; multi-round tool loops work up to the cap.
-5. Transport offline/online keeps `session.id` and returns to a usable listening state.
-6. `memory()` / `safety()` stubs are importable and tested with fakes.
-7. Default test suite stays offline (no live keys).
-8. Docs: this file + updates to interruptions, tools, session, events, api, edge-cases.
+1. User audio energy during `speaking` stops remaining TTS without calling `interrupt()` manually; inbound audio stays live.
+2. An overlapping final transcript adapts the turn (`speaking → thinking → speaking`) without a stop-then-listen restart.
+3. Multi-sentence LLM output begins playback before the full completion when streaming TTS is on.
+4. Configurable silence + tool timeouts behave as documented offline.
+5. Multiple tools in one round run in parallel; multi-round tool loops work up to the cap.
+6. Transport offline/online keeps `session.id` and returns to a usable listening state.
+7. `memory()` / `safety()` stubs are importable and tested with fakes.
+8. Default test suite stays offline (no live keys).
+9. Docs: this file + updates to interruptions, tools, session, events, api, edge-cases.
 
 ---
 

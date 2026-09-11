@@ -6,8 +6,10 @@ import type {
   EventHandler,
 } from "@thisux/voice-events";
 import type { BargeInOptions } from "./barge-in.js";
+import type { DuplexOptions, ResolvedDuplex } from "./duplex.js";
 
-export type { BargeInOptions };
+export type { BargeInOptions, DuplexOptions, ResolvedDuplex };
+export type { DuplexOverlapMode } from "./duplex.js";
 
 /** Chat message for LLM providers */
 export interface Message {
@@ -127,6 +129,12 @@ export interface CreateVoiceOptions {
    */
   bargeIn?: boolean | BargeInOptions;
   /**
+   * Full-duplex overlap policy. Default: listen while speaking and *adapt*
+   * (cancel remaining outbound speech, continue thinking→speaking without
+   * a listening restart). Pass `false` for classic barge-in interrupt.
+   */
+  duplex?: boolean | DuplexOptions;
+  /**
    * Stream TTS per sentence as LLM tokens arrive (no tools pending).
    * Pass `false` to wait for the full assistant string. Default true.
    */
@@ -187,4 +195,12 @@ export interface InternalVoiceContext {
   ttsStreaming: ResolvedTtsStreaming;
   policies: ResolvedPolicies;
   maxToolRounds: number;
+  duplex: ResolvedDuplex;
+  /**
+   * True while outbound speech was cancelled for an overlap and we are
+   * waiting to continue (or for a final transcript after energy barge-in).
+   */
+  adapting: boolean;
+  /** Assistant text already sent to TTS in the current turn. */
+  spokenAssistantText: string;
 }

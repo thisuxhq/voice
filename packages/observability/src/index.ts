@@ -87,6 +87,16 @@ function attachLogger(
       error: e.error?.message,
     });
   });
+  voice.on("speech.barge_in", (e) => {
+    log("info", "speech.barge_in", { sessionId: sid(), mode: e.mode });
+  });
+  voice.on("duplex.overlap", (e) => {
+    log("info", "duplex.overlap", {
+      sessionId: sid(),
+      text: e.text,
+      spoken: e.spoken,
+    });
+  });
   voice.on("tts.started", (e) => {
     log("debug", "tts.started", { sessionId: sid(), text: e.text });
   });
